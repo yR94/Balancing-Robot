@@ -1,18 +1,46 @@
 #include <Arduino.h>
 
-// put function declarations here:
-int myFunction(int, int);
 
+uint32_t i =0;
+
+int dir=1;
+
+
+//////////////////
 void setup() {
   // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+ pinMode(LED_BUILTIN,OUTPUT);
+ pinMode(GPIO_NUM_32,OUTPUT);
+ pinMode(GPIO_NUM_33,OUTPUT);
+  digitalWrite(LED_BUILTIN,HIGH);
+  Serial.begin(9600);
+
+
+
+
+   delay(1000);
+ 
+
+
 }
+
+
+int16_t AcX,AcY,AcZ,Tmp,GyX,GyY,GyZ;
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
+i++;
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+
+digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
+
+digitalWrite(GPIO_NUM_32,i%2==0 ? HIGH : LOW);// Step
+
+if(i%1500==0)dir= !dir;
+
+digitalWrite(GPIO_NUM_33,dir ? HIGH : LOW);// diraction
+
+
+
+delay(1);
+
 }
