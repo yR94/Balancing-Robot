@@ -4,7 +4,7 @@
 # define MPU_addr 0x68
 
 #define Acc_SF   8192.0
-#define Gyro_SF   131.0
+#define Gyro_SF   43.6
 
 uint32_t i =0;
 hw_timer_t *Timer0_Cfg = NULL;
@@ -12,9 +12,30 @@ float ax=0,ay=0,az=0,gx=0,gy=0,gz=0;
 float pitch=0,roll=0,yaw=0;
 float AccPitch=0,AccRoll=0;
 float GyroPitch=0,GyroRoll=0,GyroYaw=0;
+unsigned long T = 0;
+float dt = 0.005;
+
 
 void IMU_init();
 void IMU_Read();
+void InitTimer();
+
+void IRAM_ATTR Timer0_ISR()
+{
+
+  i++;
+
+
+digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
+
+
+
+
+
+}
+
+
+
 
 /////////////////
 void setup() {
@@ -24,41 +45,47 @@ void setup() {
   Serial.begin(9600);
 
    IMU_init();
+   InitTimer();
 
    
 
 
-   delay(1000);
+   
  
 
 
 }
 
 
-
-
+void InitTimer()
+{
+    Timer0_Cfg = timerBegin(0, 8000, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
+    timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
+    timerAlarmWrite(Timer0_Cfg, 2000, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms
+    timerAlarmEnable(Timer0_Cfg);
+}
 void loop() {
-i++;
+
+IMU_Read();
+
+GyroPitch = pitch+gz*dt;
+AccPitch = -atan2(ay,ax)*180/PI;
+
+pitch = 0.96*GyroPitch + 0.04*AccPitch;
 
 
-digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
+Serial.println(pitch);
+//Serial.print(micros()-T);
+//
+while (micros()-T<=dt*100000)
+{
+ 
+}
+
+//Serial.println(micros()-T);
+T = micros() ;
 
 
- IMU_Read();
-
-/*
-
-pitch = atan2(ay,ax)*180/PI;
-roll = roll+0.5*GyZ/131.0;
-
-Serial.print(pitch);
-Serial.print(' ');
-Serial.println(roll);
-Serial.println("----------------");
-
-*/
-
-delay(500);
 
 }
 
@@ -92,7 +119,7 @@ gz = gz_raw/Gyro_SF;
 
 
 
-
+/*
 
 Serial.print(ax);
 Serial.print(' ');
@@ -106,6 +133,7 @@ Serial.print(gy);
 Serial.print(' ');
 Serial.println(gz);
 Serial.println("----------------------");
+*/
 }
 
 
