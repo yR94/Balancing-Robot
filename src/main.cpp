@@ -4,7 +4,7 @@
 # define MPU_addr 0x68
 
 #define Acc_SF   8192.0
-#define Gyro_SF   43.6
+#define Gyro_SF   32.8
 
 uint32_t i =0;
 hw_timer_t *Timer0_Cfg = NULL;
@@ -68,12 +68,15 @@ void loop() {
 
 IMU_Read();
 
-GyroPitch = pitch+gz*dt;
+GyroPitch = GyroPitch+gz*dt;
 AccPitch = -atan2(ay,ax)*180/PI;
 
-pitch = 0.96*GyroPitch + 0.04*AccPitch;
+pitch = 0.98*(pitch+gz*dt) + 0.02*AccPitch;
 
-
+Serial.print(GyroPitch);
+Serial.print("  ");
+Serial.print(AccPitch);
+Serial.print("  ");
 Serial.println(pitch);
 //Serial.print(micros()-T);
 //
