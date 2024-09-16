@@ -14,6 +14,7 @@ float AccPitch=0,AccRoll=0;
 float GyroPitch=0,GyroRoll=0,GyroYaw=0;
 unsigned long T = 0;
 float dt = 0.005;
+float speed = 0;
 
 
 hw_timer_t *Timer0_Cfg = NULL;
@@ -43,14 +44,9 @@ digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
 void IRAM_ATTR Timer1_ISR()
 {
 
-
-  if (cnt>maxcnt)
-{
  digitalWrite(GPIO_NUM_32,  HIGH);
  digitalWrite(GPIO_NUM_32, LOW);
- cnt=0;
-}
-cnt++;
+
   
 }
 
@@ -99,23 +95,21 @@ AccPitch = -atan2(ay,ax)*180/PI;
 pitch = 0.98*(pitch+gz*dt) + 0.02*AccPitch;
 
 
-Serial.print(maxcnt);
-Serial.print("    ");
-Serial.println(pitch);
+// Serial.print(maxcnt);
+// Serial.print("    ");
+// Serial.println(pitch);
 // control
 
 pitch>0 ? digitalWrite(GPIO_NUM_33,  HIGH) : digitalWrite(GPIO_NUM_33,  LOW);  
-
-if (abs(pitch)<10)maxcnt=constrain(map(abs(pitch),0,10,8000,800),800,8000);//slow mode;
-else maxcnt=constrain(map(abs(pitch),10,60,460,30),30,460);//speed mode;
-//
-
-if (abs(pitch)<0.5)maxcnt=-1; // fully stop
+abs(pitch)<0.5 ? timerAlarmDisable(Timer1_Cfg) : timerAlarmEnable(Timer1_Cfg);;  
 
 
+ timerAlarmWrite(Timer1_Cfg, int(constrain(map(abs(pitch),0,50,1000,50),50,1000)), true);
 
-
-
+speed=10*(90-abs(pitch));
+Serial.print(speed);
+Serial.print("    ");
+Serial.println(pitch);
 
 //Serial.print(micros()-T);
 //
@@ -212,3 +206,5 @@ void IMU_init()
   Wire.endTransmission();  
 
 }
+
+
