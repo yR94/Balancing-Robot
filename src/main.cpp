@@ -12,6 +12,8 @@ void setup() {
  pinMode(LED_BUILTIN,OUTPUT);
  pinMode(GPIO_NUM_32,OUTPUT);
  pinMode(GPIO_NUM_33,OUTPUT);
+  pinMode(GPIO_NUM_25,OUTPUT);
+ pinMode(GPIO_NUM_26,OUTPUT);
   digitalWrite(LED_BUILTIN,HIGH);
   Serial.begin(9600);
 
@@ -34,13 +36,13 @@ i++;
 digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
 
 digitalWrite(GPIO_NUM_32,i%2==0 ? HIGH : LOW);// Step
-
+digitalWrite(GPIO_NUM_25,i%2==0 ? HIGH : LOW);// Step
 if(i%1500==0)dir= !dir;
 
 digitalWrite(GPIO_NUM_33,dir ? HIGH : LOW);// diraction
-
-
+digitalWrite(GPIO_NUM_26,!dir ? HIGH : LOW);// diraction
 
 delay(1);
+
 
 }
