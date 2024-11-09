@@ -12,7 +12,7 @@ public:
     void begin();
     
     // Set the timer periods dynamically
-    void setSpeed(int Speed);
+    void setSpeed(float Speed);
     int get_cnt();
 
 private:
@@ -21,7 +21,7 @@ private:
     gpio_num_t DirPin;
     int TimerNum;
     int cnt;
-    int Speed;
+    float Speed;
 
     // Static pointers to an instance of Stepper for each motor
     static Stepper* instance0;  // For Timer 0

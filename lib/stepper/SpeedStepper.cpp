@@ -20,10 +20,10 @@ void Stepper::begin() {
 
     // Setup the timer (this example uses timer 0 or timer 1)
     if (TimerNum == 0) {
-        timer = timerBegin(TimerNum, 80, true);  // 80 is the prescaler
+        timer = timerBegin(TimerNum, 8, true);  // 80 is the prescaler
         timerAttachInterrupt(timer, Timer_ISR0, true);
     } else if (TimerNum == 1) {
-        timer = timerBegin(TimerNum, 80, true);  // 80 is the prescaler
+        timer = timerBegin(TimerNum, 8, true);  // 80 is the prescaler
         timerAttachInterrupt(timer, Timer_ISR1, true);
     }
     
@@ -31,11 +31,17 @@ void Stepper::begin() {
     timerAlarmEnable(timer);            // Enable the timer
 }
 
-void Stepper::setSpeed(int Speed) {
+void Stepper::setSpeed(float Speed) {
+
     // Adjust the timer period based on the speed
-    int period =  abs(Speed);  // Convert speed to period (in microseconds)
+    if(Speed==0) timerAlarmDisable(timer);
+    else
+    {
+    timerAlarmEnable(timer);
+    uint64_t period =  abs(1e6/Speed);  // Convert speed to period (in microseconds)
     Speed<0?digitalWrite(DirPin,LOW):digitalWrite(DirPin,HIGH);
     timerAlarmWrite(timer, period, true); // Update timer alarm with new period
+    }
 }
 
 int Stepper::get_cnt() {
