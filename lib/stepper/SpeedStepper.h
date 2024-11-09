@@ -23,15 +23,17 @@ private:
     int cnt;
     int Speed;
 
-    // Static pointer to an instance of Stepper
-    static Stepper* instance;  // Static pointer to the current instance
+    // Static pointers to an instance of Stepper for each motor
+    static Stepper* instance0;  // For Timer 0
+    static Stepper* instance1;  // For Timer 1
     
     // Timer handles
     hw_timer_t *timer = NULL;
 
-    // Timer interrupt service routines
-    static void IRAM_ATTR Timer_ISR();
-    
+    // Static Timer ISR functions for each timer
+    static void IRAM_ATTR Timer_ISR0();
+    static void IRAM_ATTR Timer_ISR1();
 };
+
 
 #endif
