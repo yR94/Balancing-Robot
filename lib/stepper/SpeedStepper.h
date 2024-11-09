@@ -13,6 +13,11 @@ public:
     
     // Set the timer periods dynamically
     void setSpeed(float Speed);
+
+    // Set the timer periods dynamically
+    void Bip();
+
+
     int get_cnt();
 
 private:

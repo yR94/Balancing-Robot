@@ -44,6 +44,13 @@ void Stepper::setSpeed(float Speed) {
     }
 }
 
+void Stepper::Bip() {
+
+setSpeed(7000);
+delay(40);
+setSpeed(0); // Set motor speed to 200 steps per second
+}
+
 int Stepper::get_cnt() {
     return cnt;
 }
