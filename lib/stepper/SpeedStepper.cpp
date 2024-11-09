@@ -33,7 +33,8 @@ void Stepper::begin() {
 
 void Stepper::setSpeed(int Speed) {
     // Adjust the timer period based on the speed
-    int period =  Speed;  // Convert speed to period (in microseconds)
+    int period =  abs(Speed);  // Convert speed to period (in microseconds)
+    Speed<0?digitalWrite(DirPin,LOW):digitalWrite(DirPin,HIGH);
     timerAlarmWrite(timer, period, true); // Update timer alarm with new period
 }
 
