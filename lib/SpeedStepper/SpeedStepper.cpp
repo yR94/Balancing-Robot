@@ -60,6 +60,8 @@ void IRAM_ATTR Stepper::Timer_ISR0() {
     if (instance0 != nullptr) {
         digitalWrite(instance0->StepPin, HIGH);
         digitalWrite(instance0->StepPin, LOW);
+        instance0->Speed>=0?instance0->cnt++:instance0->cnt--;
+    
     }
 }
 
@@ -68,5 +70,6 @@ void IRAM_ATTR Stepper::Timer_ISR1() {
     if (instance1 != nullptr) {
         digitalWrite(instance1->StepPin, HIGH);
         digitalWrite(instance1->StepPin, LOW);
+        instance1->Speed>=0?instance1->cnt++:instance1->cnt--;
     }
 }
