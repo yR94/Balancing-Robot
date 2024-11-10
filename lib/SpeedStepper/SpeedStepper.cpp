@@ -4,7 +4,7 @@ Stepper* Stepper::instance0 = nullptr;
 Stepper* Stepper::instance1 = nullptr;
 
 Stepper::Stepper(gpio_num_t stepPin, gpio_num_t dirPin, int TimerNumber)
-    : StepPin(stepPin), DirPin(dirPin), TimerNum(TimerNumber), cnt(0), Speed(0) {}
+    : StepPin(stepPin), DirPin(dirPin), TimerNum(TimerNumber), cnt(0), Speed(0), dir(1) {}
 
 void Stepper::begin() {
     // Set the static instance pointer to this instance based on the timer number
@@ -40,6 +40,7 @@ void Stepper::setSpeed(float Speed) {
     timerAlarmEnable(timer);
     uint64_t period =  abs(1e6/Speed);  // Convert speed to period (in microseconds)
     Speed<0?digitalWrite(DirPin,LOW):digitalWrite(DirPin,HIGH);
+    Speed<0?dir=-1:dir=1;
     timerAlarmWrite(timer, period, true); // Update timer alarm with new period
     }
 }
@@ -60,8 +61,7 @@ void IRAM_ATTR Stepper::Timer_ISR0() {
     if (instance0 != nullptr) {
         digitalWrite(instance0->StepPin, HIGH);
         digitalWrite(instance0->StepPin, LOW);
-        instance0->Speed>=0?instance0->cnt++:instance0->cnt--;
-    
+        instance0->cnt+=instance0->dir;
     }
 }
 
@@ -70,6 +70,6 @@ void IRAM_ATTR Stepper::Timer_ISR1() {
     if (instance1 != nullptr) {
         digitalWrite(instance1->StepPin, HIGH);
         digitalWrite(instance1->StepPin, LOW);
-        instance1->Speed>=0?instance1->cnt++:instance1->cnt--;
+        instance1->cnt+=instance1->dir
     }
 }

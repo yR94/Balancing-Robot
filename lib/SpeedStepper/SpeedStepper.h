@@ -27,6 +27,7 @@ private:
     int TimerNum;
     int cnt;
     float Speed;
+    int dir;
 
     // Static pointers to an instance of Stepper for each motor
     static Stepper* instance0;  // For Timer 0
