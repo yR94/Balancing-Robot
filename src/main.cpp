@@ -1,214 +1,292 @@
-#include <Arduino.h>
 #include <Wire.h>
+#include <MPU6050.h>
+#include <WiFi.h>
+#include <esp_http_server.h>
+#include "Arduino.h"
 
-# define MPU_addr 0x68
+// Replace with your network credentials
+const char* ssid = "Yosef40";
+const char* password = "0545847144";
 
-#define Acc_SF   8192.0
-#define Gyro_SF  32.8
+// Set up the IMU (MPU6050 in this case)
+MPU6050 mpu;
 
-uint32_t i =0;
+uint16_t ax,ay,az,gx,gy,gz;
+// HTTP server handle
+httpd_handle_t server = NULL;
 
-float ax=0,ay=0,az=0,gx=0,gy=0,gz=0;
-float pitch=0,roll=0,yaw=0;
-float AccPitch=0,AccRoll=0;
-float GyroPitch=0,GyroRoll=0,GyroYaw=0;
-unsigned long T = 0;
-float dt = 0.005;
+// Web interface
+static const char* HTML_PAGE = R"rawliteral(
+<html>
+  <head>
+    <title>ESP32 IMU Data and Car Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+      body { font-family: Arial; text-align: center; margin: 0 auto; padding-top: 30px; }
+      #chart-accel, #chart-gyro { 
+        width: 45%; 
+        height: 300px; 
+        margin: 20px auto;
+      }
+      .chart-container {
+        display: flex;
+        justify-content: space-between;
+        padding: 20px;
+      }
+      .button-container {
+        margin-top: 20px;
+      }
+      .button {
+        background-color: #2f4468;
+        border: none;
+        color: white;
+        padding: 15px 30px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 18px;
+        margin: 10px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ESP32 IMU Data and Car Control</h1>
+    
+    <!-- IMU Data Plots -->
+    <div class="chart-container">
+      <div id="chart-accel"></div>
+      <div id="chart-gyro"></div>
+    </div>
+
+    <!-- Control Buttons -->
+    <div class="button-container">
+      <button class="button" onclick="sendControlCommand('forward')">Forward</button>
+      <button class="button" onclick="sendControlCommand('backward')">Backward</button>
+      <button class="button" onclick="sendControlCommand('left')">Left</button>
+      <button class="button" onclick="sendControlCommand('right')">Right</button>
+      <button class="button" onclick="sendControlCommand('stop')">Stop</button>
+    </div>
+
+    <script>
+      var imuDataAccel = {
+        x: [],
+        y: [],
+        z: [],
+        time: []
+      };
+
+      var imuDataGyro = {
+        x: [],
+        y: [],
+        z: [],
+        time: []
+      };
+
+      var layoutAccel = {
+        title: 'Accelerometer Data',
+        xaxis: { title: 'Time' },
+        yaxis: { title: 'Acceleration (m/s²)' },
+        showlegend: true
+      };
+
+      var layoutGyro = {
+        title: 'Gyroscope Data',
+        xaxis: { title: 'Time' },
+        yaxis: { title: 'Gyroscope (°/s)' },
+        showlegend: true
+      };
+
+      Plotly.newPlot('chart-accel', [{
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'X Accel',
+        x: imuDataAccel.time,
+        y: imuDataAccel.x,
+      }, {
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'Y Accel',
+        x: imuDataAccel.time,
+        y: imuDataAccel.y,
+      }, {
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'Z Accel',
+        x: imuDataAccel.time,
+        y: imuDataAccel.z,
+      }], layoutAccel);
+
+      Plotly.newPlot('chart-gyro', [{
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'X Gyro',
+        x: imuDataGyro.time,
+        y: imuDataGyro.x,
+      }, {
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'Y Gyro',
+        x: imuDataGyro.time,
+        y: imuDataGyro.y,
+      }, {
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'Z Gyro',
+        x: imuDataGyro.time,
+        y: imuDataGyro.z,
+      }], layoutGyro);
+
+      function updateGraph(data) {
+        imuDataAccel.time.push(data.time);
+        imuDataAccel.x.push(data.ax);
+        imuDataAccel.y.push(data.ay);
+        imuDataAccel.z.push(data.az);
+
+        imuDataGyro.time.push(data.time);
+        imuDataGyro.x.push(data.gx);
+        imuDataGyro.y.push(data.gy);
+        imuDataGyro.z.push(data.gz);
+
+        if (imuDataAccel.time.length > 50) {
+          imuDataAccel.time.shift();
+          imuDataAccel.x.shift();
+          imuDataAccel.y.shift();
+          imuDataAccel.z.shift();
+
+          imuDataGyro.time.shift();
+          imuDataGyro.x.shift();
+          imuDataGyro.y.shift();
+          imuDataGyro.z.shift();
+        }
+
+        Plotly.update('chart-accel', {
+          x: [imuDataAccel.time, imuDataAccel.time, imuDataAccel.time],
+          y: [imuDataAccel.x, imuDataAccel.y, imuDataAccel.z],
+        });
+
+        Plotly.update('chart-gyro', {
+          x: [imuDataGyro.time, imuDataGyro.time, imuDataGyro.time],
+          y: [imuDataGyro.x, imuDataGyro.y, imuDataGyro.z],
+        });
+      }
+
+      // Fetch IMU data every 10ms for a faster stream
+      setInterval(() => {
+        fetch('/get_imu_data')
+          .then(response => response.json())
+          .then(data => updateGraph(data));
+      }, 10);  // 10ms for faster updates
+
+      // Send command to ESP32 to control the motors
+      function sendControlCommand(command) {
+        fetch(`/action?go=${command}`)
+          .then(response => response.text())
+          .then(data => console.log(`Command sent: ${command}`))
+          .catch(error => console.error('Error sending command:', error));
+      }
+    </script>
+  </body>
+</html>
 
 
-hw_timer_t *Timer0_Cfg = NULL;
-hw_timer_t *Timer1_Cfg = NULL;
+)rawliteral";
 
-uint64_t cnt=0,maxcnt=2;//maxcnt=50~600 fast  760~1100 slow
+// IMU data structure
+struct IMUData {
+  float ax, ay, az;
+  float gx, gy, gz;
+  unsigned long time;
+};
 
+// Route to fetch IMU data
+static esp_err_t imu_data_handler(httpd_req_t *req) {
+  IMUData data;
 
-void IMU_init();
-void IMU_Read();
-void InitTimer();
-
-void IRAM_ATTR Timer0_ISR()
-{
-
-  i++;
-
-
-digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
-
-
-
-
-
-}
-
-void IRAM_ATTR Timer1_ISR()
-{
-
-
-  if (cnt>maxcnt)
-{
- digitalWrite(GPIO_NUM_32,  HIGH);
- digitalWrite(GPIO_NUM_32, LOW);
- cnt=0;
-}
-cnt++;
+  // Read IMU data
   
+  
+
+  data.ax = mpu.getAccelerationX();
+  data.ay = mpu.getAccelerationY();
+  data.az = mpu.getAccelerationZ();
+  data.gx = mpu.getRotationX();
+  data.gy = mpu.getRotationY();
+  data.gz = mpu.getRotationZ();
+  data.time = millis();
+
+  // Convert to JSON and send as response
+  String jsonData = String("{\"ax\":") + data.ax + ",\"ay\":" + data.ay + ",\"az\":" + data.az +
+                    ",\"gx\":" + data.gx + ",\"gy\":" + data.gy + ",\"gz\":" + data.gz +
+                    ",\"time\":" + data.time + "}";
+
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, jsonData.c_str(), jsonData.length());
+
+  return ESP_OK;
 }
 
+// Serve the main HTML page
+static esp_err_t index_handler(httpd_req_t *req) {
+  httpd_resp_set_type(req, "text/html");
+  return httpd_resp_send(req, (const char*)HTML_PAGE, strlen(HTML_PAGE));
+}
 
-/////////////////
+// Start HTTP server
+void startServer() {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 80;
+
+  httpd_uri_t index_uri = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = index_handler,
+    .user_ctx = NULL
+  };
+
+  httpd_uri_t imu_uri = {
+    .uri = "/get_imu_data",
+    .method = HTTP_GET,
+    .handler = imu_data_handler,
+    .user_ctx = NULL
+  };
+
+  if (httpd_start(&server, &config) == ESP_OK) {
+    httpd_register_uri_handler(server, &index_uri);
+    httpd_register_uri_handler(server, &imu_uri);
+  }
+}
+
 void setup() {
-  // put your setup code here, to run once:
-  pinMode(GPIO_NUM_33 ,OUTPUT);
-  pinMode(GPIO_NUM_32 ,OUTPUT);
-  pinMode(LED_BUILTIN,OUTPUT);
-  digitalWrite(LED_BUILTIN,HIGH);
-  Serial.begin(9600);
+  // Initialize Serial Monitor
+  Serial.begin(115200);
 
-   IMU_init();
-   InitTimer();
+  // Initialize I2C communication
+  Wire.begin();
 
-   
+  // Initialize MPU6050
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 connection failed!");
+    while (1);
+  }
 
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
 
-   
- 
+  Serial.println("WiFi connected");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
 
-
+  // Start the HTTP server
+  startServer();
 }
 
-
-void InitTimer()
-{
-    Timer0_Cfg = timerBegin(0, 8000, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-    timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
-    timerAlarmWrite(Timer0_Cfg, 2000, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms
-    timerAlarmEnable(Timer0_Cfg);
-
-    Timer1_Cfg = timerBegin(1, 80, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-    timerAttachInterrupt(Timer1_Cfg, &Timer1_ISR, true);
-    timerAlarmWrite(Timer1_Cfg, 20, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms//Max Rate 3000
-    timerAlarmEnable(Timer1_Cfg);
-}
 void loop() {
-
-IMU_Read();
-
-GyroPitch = GyroPitch+gz*dt;
-AccPitch = -atan2(ay,ax)*180/PI;
-
-pitch = 0.98*(pitch+gz*dt) + 0.02*AccPitch;
-
-
-Serial.print(maxcnt);
-Serial.print("    ");
-Serial.println(pitch);
-// control
-
-pitch>0 ? digitalWrite(GPIO_NUM_33,  HIGH) : digitalWrite(GPIO_NUM_33,  LOW);  
-
-if (abs(pitch)<10)maxcnt=constrain(map(abs(pitch),0,10,8000,800),800,8000);//slow mode;
-else maxcnt=constrain(map(abs(pitch),10,60,460,30),30,460);//speed mode;
-//
-
-if (abs(pitch)<0.5)maxcnt=-1; // fully stop
-
-
-
-
-
-
-//Serial.print(micros()-T);
-//
-while (micros()-T<=dt*100000)
-{
- 
-}
-
-//Serial.println(micros()-T);
-T = micros() ;
-
-
-
-}
-
-
-void IMU_Read()
-{
-  int16_t ax_raw,ay_raw,az_raw,gx_raw,gy_raw,gz_raw;
-
-Wire.beginTransmission(MPU_addr);
-Wire.write(0x3B);
-Wire.endTransmission(); 
-Wire.requestFrom(MPU_addr,6,true);
-ax_raw=Wire.read()<<8|Wire.read();
-ay_raw=Wire.read()<<8|Wire.read();
-az_raw=Wire.read()<<8|Wire.read();
-
-Wire.beginTransmission(MPU_addr);                                   //Start communication with the gyro Wire.write(0x43); 
-Wire.write(0x43);                                                        //Start reading the Who_am_I register 75h
-Wire.endTransmission();                                                 //End the transmission
-Wire.requestFrom(MPU_addr,6,true);
-gx_raw = (Wire.read() << 8 | Wire.read()) -48; // For a 250deg/s range we have to divide first the raw value by 131.0, according to the datasheet
-gy_raw = (Wire.read() << 8 | Wire.read()) +58;
-gz_raw = (Wire.read() << 8 | Wire.read()) -235;
-
-ax = ax_raw/Acc_SF;
-ay = ay_raw/Acc_SF;
-az = az_raw/Acc_SF;
-gx = gx_raw/Gyro_SF;
-gy = gy_raw/Gyro_SF;
-gz = gz_raw/Gyro_SF;
-
-
-
-/*
-
-Serial.print(ax);
-Serial.print(' ');
-Serial.print(ay);
-Serial.print(' ');
-Serial.print(az);
-Serial.print(' ');
-Serial.print(gx); 
-Serial.print(' ');
-Serial.print(gy);
-Serial.print(' ');
-Serial.println(gz);
-Serial.println("----------------------");
-*/
-}
-
-
-void IMU_GetAngels()
-{
-  
-}
-
-
-void IMU_init()
-{
-
-  
- Wire.begin();
-  //By default the MPU-6050 sleeps. So we have to wake it up.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x6B);                                                         //We want to write to the PWR_MGMT_1 register (6B hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00000000 to activate the gyro
-  Wire.endTransmission();                                                   //End the transmission with the gyro.
-  //Set the full scale of the gyro to +/- 250 degrees per second
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x1B);                                                         //We want to write to the GYRO_CONFIG register (1B hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00000000 (250dps full scale)
-  Wire.endTransmission();                                                   //End the transmission with the gyro
-  //Set the full scale of the accelerometer to +/- 4g.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x1C);                                                         //We want to write to the ACCEL_CONFIG register (1A hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00001000 (+/- 4g full scale range)
-  Wire.endTransmission();                                                   //End the transmission with the gyro
-  //Set some filtering to improve the raw data.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search
-  Wire.write(0x1A);                                                         //We want to write to the CONFIG register (1A hex)
-  Wire.write(0x03);                                                         //Set the register bits as 00000011 (Set Digital Low Pass Filter to ~43Hz)
-  Wire.endTransmission();  
-
+  // The HTTP server runs in the background
 }
