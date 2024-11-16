@@ -17,56 +17,159 @@ httpd_handle_t server = NULL;
 
 // Web interface
 static const char* HTML_PAGE = R"rawliteral(
+
 <html>
   <head>
     <title>ESP32 IMU Data and Car Control</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
-      body { font-family: Arial; text-align: center; margin: 0 auto; padding-top: 30px; }
+      body { 
+        font-family: Arial; 
+        text-align: center; 
+        margin: 0 auto; 
+        padding-top: 30px; 
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      /* IMU Data Plots */
       #chart-accel, #chart-gyro { 
         width: 45%; 
         height: 300px; 
-        margin: 20px auto;
+        margin: 30px auto;
       }
+
       .chart-container {
         display: flex;
         justify-content: space-between;
         padding: 20px;
+        flex-direction: column;
+        align-items: center;
       }
+
+      /* Control panel */
+      .control-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin-right: 20px;
+      }
+
+      /* Rose-style Button Container */
       .button-container {
-        margin-top: 20px;
+        position: relative;
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        border: 2px solid #2f4468;
+        margin: 20px auto;
       }
-      .button {
+
+      .control-button {
+        position: absolute;
+        width: 50px;
+        height: 50px;
         background-color: #2f4468;
-        border: none;
+        border-radius: 50%;
         color: white;
-        padding: 15px 30px;
-        text-align: center;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 18px;
-        margin: 10px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .control-button:hover {
+        background-color: #1c2e47;
+      }
+
+      /* Scroll bars */
+      .scroll-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .scroll-bar {
+        width: 200px;
+        height: 20px;
+      }
+
+      /* Mode Selector */
+      .mode-selector {
+        margin-left: 20px;
+        padding: 10px;
+        width: 150px;
+      }
+
+      /* General purpose buttons */
+      .general-buttons {
+        margin-top: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .general-button {
+        width: 120px;
+        height: 40px;
+        background-color: #2f4468;
+        color: white;
+        font-weight: bold;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+
+      .general-button:hover {
+        background-color: #1c2e47;
       }
     </style>
   </head>
   <body>
-    <h1>ESP32 IMU Data and Car Control</h1>
-    
-    <!-- IMU Data Plots -->
     <div class="chart-container">
+      <!-- IMU Data Plots -->
       <div id="chart-accel"></div>
       <div id="chart-gyro"></div>
     </div>
 
-    <!-- Control Buttons -->
-    <div class="button-container">
-      <button class="button" onclick="sendControlCommand('forward')">Forward</button>
-      <button class="button" onclick="sendControlCommand('backward')">Backward</button>
-      <button class="button" onclick="sendControlCommand('left')">Left</button>
-      <button class="button" onclick="sendControlCommand('right')">Right</button>
-      <button class="button" onclick="sendControlCommand('stop')">Stop</button>
+    <!-- Control Panel -->
+    <div class="control-panel">
+      <!-- Rose Button Layout -->
+      <div class="button-container">
+        <div id="up" class="control-button" style="top: 10px; left: 75px;">Forward</div>
+        <div id="down" class="control-button" style="bottom: 10px; left: 75px;">Back</div>
+        <div id="left" class="control-button" style="top: 75px; left: 10px;">Right</div>
+        <div id="right" class="control-button" style="top: 75px; right: 10px;">Left</div>
+        <div id="stop" class="control-button" style="top: 75px; left: 75px;">Stop</div>
+      </div>
+
+      <!-- Mode Selector -->
+      <select class="mode-selector" id="mode-selector">
+        <option value="manual">Manual</option>
+        <option value="automatic">Automatic</option>
+        <option value="maintenance">Maintenance</option>
+      </select>
+
+      <!-- Scroll Bars -->
+      <div class="scroll-bars">
+        <input type="range" class="scroll-bar" min="0" max="100" value="50" id="speed-slider">
+        <input type="range" class="scroll-bar" min="0" max="100" value="50" id="turn-slider">
+      </div>
+
+      <!-- General Purpose Buttons -->
+      <div class="general-buttons">
+        <button class="general-button" id="button1">Button 1</button>
+        <button class="general-button" id="button2">Button 2</button>
+        <button class="general-button" id="button3">Button 3</button>
+        <button class="general-button" id="button4">Button 4</button>
+      </div>
     </div>
 
     <script>
@@ -149,7 +252,7 @@ static const char* HTML_PAGE = R"rawliteral(
         imuDataGyro.y.push(data.gy);
         imuDataGyro.z.push(data.gz);
 
-        if (imuDataAccel.time.length > 50) {
+        if (imuDataAccel.time.length > 100) {
           imuDataAccel.time.shift();
           imuDataAccel.x.shift();
           imuDataAccel.y.shift();
@@ -172,20 +275,24 @@ static const char* HTML_PAGE = R"rawliteral(
         });
       }
 
-      // Fetch IMU data every 10ms for a faster stream
       setInterval(() => {
         fetch('/get_imu_data')
           .then(response => response.json())
           .then(data => updateGraph(data));
-      }, 10);  // 10ms for faster updates
+      }, 100);  // Adjust to faster updates
 
-      // Send command to ESP32 to control the motors
-      function sendControlCommand(command) {
-        fetch(`/action?go=${command}`)
+      // Control button actions
+      function sendControlCommand(direction) {
+        fetch(`/action?direction=${direction}`)
           .then(response => response.text())
-          .then(data => console.log(`Command sent: ${command}`))
-          .catch(error => console.error('Error sending command:', error));
+          .then(data => console.log(`Command sent: ${direction}`));
       }
+
+      document.getElementById('up').addEventListener('click', () => sendControlCommand('up'));
+      document.getElementById('down').addEventListener('click', () => sendControlCommand('down'));
+      document.getElementById('left').addEventListener('click', () => sendControlCommand('left'));
+      document.getElementById('right').addEventListener('click', () => sendControlCommand('right'));
+      document.getElementById('stop').addEventListener('click', () => sendControlCommand('stop'));
     </script>
   </body>
 </html>
