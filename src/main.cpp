@@ -37,9 +37,9 @@ static const char* HTML_PAGE = R"rawliteral(
 
       /* IMU Data Plots */
       #chart-accel, #chart-gyro { 
-        width: 45%; 
-        height: 300px; 
-        margin: 30px auto;
+        width: 800px; 
+        height:300px; 
+        margin: 20px auto;
       }
 
       .chart-container {
@@ -190,14 +190,14 @@ static const char* HTML_PAGE = R"rawliteral(
       var layoutAccel = {
         title: 'Accelerometer Data',
         xaxis: { title: 'Time' },
-        yaxis: { title: 'Acceleration (m/s²)' },
+        yaxis: { title: 'Acceleration (m/s^2)' },
         showlegend: true
       };
 
       var layoutGyro = {
         title: 'Gyroscope Data',
         xaxis: { title: 'Time' },
-        yaxis: { title: 'Gyroscope (°/s)' },
+        yaxis: { title: 'Gyroscope (deg/s)' },
         showlegend: true
       };
 
