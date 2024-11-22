@@ -47,11 +47,11 @@ THE SOFTWARE.
 
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
-
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include "SpeedStepper.h"
-#include <Arduino.h>
+
 
 hw_timer_t *Timer0_Cfg = NULL;
 hw_timer_t *Timer1_Cfg = NULL;
@@ -75,48 +75,7 @@ Stepper StepperR(GPIO_NUM_25, GPIO_NUM_26, 1); // Pin 5 for step, Pin 18 for dir
 int lastCmd = 0;
 
 String valueString = String(0);
-
-void handleRoot() {
-  const char html[] PROGMEM = R"rawliteral(
-  <!DOCTYPE HTML><html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" href="data:,">
-    <style>
-      html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }
-      .button { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; background-color: #4CAF50; border: none; color: white; padding: 12px 28px; text-decoration: none; font-size: 26px; margin: 1px; cursor: pointer; }
-      .button2 {background-color: #555555;}
-    </style>
-    <script>
-      function moveForward() { fetch('/forward'); }
-      function moveLeft() { fetch('/left'); }
-      function stopRobot() { fetch('/stop'); }
-      function moveRight() { fetch('/right'); }
-      function moveReverse() { fetch('/reverse'); }
-
-      function updateMotorSpeed(pos) {
-        document.getElementById('motorSpeed').innerHTML = pos;
-        fetch(`/speed?value=${pos}`);
-      }
-    </script>
-  </head>
-  <body>
-    <h1>ESP32 Motor Control</h1>
-    <p><button class="button" onclick="moveForward()">FORWARD</button></p>
-    <div style="clear: both;">
-      <p>
-        <button class="button" onclick="moveLeft()">LEFT</button>
-        <button class="button button2" onclick="stopRobot()">STOP</button>
-        <button class="button" onclick="moveRight()">RIGHT</button>
-      </p>
-    </div>
-    <p><button class="button" onclick="moveReverse()">REVERSE</button></p>
-    <p>Motor Speed: <span id="motorSpeed">0</span></p>
-    <input type="range" min="0" max="100" step="1" id="motorSlider" oninput="updateMotorSpeed(this.value)" value="0"/>
-  </body>
-  </html>)rawliteral";
-  server.send(200, "text/html", html);
-}
+void handleRoot();
 
 int Vel = 0;
 void handleStop() {
@@ -238,11 +197,12 @@ void setup() {
     StepperR.begin();
     StepperL.setSpeed(0); // Set motor speed to 200 steps per second
     StepperR.setSpeed(0); // Set motor speed to 200 steps per second
-
+digitalWrite(BUILTIN_LED,HIGH);
    StepperR.Bip();
    StepperR.Bip();
    StepperR.Bip();
     delay(500);
+
         StepperL.Bip();
         StepperL.Bip();
         StepperL.Bip();
@@ -256,8 +216,68 @@ bool overclock = 0;
 void loop() {
 
 server.handleClient();
+analogWrite(BUILTIN_LED,map(Vel,0,100,0,25));
 
 }
 
 
 
+void handleRoot() {
+  const char html[] PROGMEM = R"rawliteral(
+  <!DOCTYPE HTML><html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="icon" href="data:,">
+    <style>
+      html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }
+      .button { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; background-color: #4CAF50; border: none; color: rgb(250, 250, 250); padding: 12px 28px; text-decoration: none; font-size: 26px; margin: 1px; cursor: pointer; }
+      .button2 {background-color: #555555;}
+    </style>
+    <script>
+      function moveForward() { fetch('/forward'); }
+      function moveLeft() { fetch('/left'); }
+      function stopRobot() { fetch('/stop'); }
+      function moveRight() { fetch('/right'); }
+      function moveReverse() { fetch('/reverse'); }
+      function updateMotorSpeed(pos) {
+        document.getElementById('motorSpeed').innerHTML = pos;
+        fetch(`/speed?value=${pos}`);
+      }
+    </script>
+  </head>
+  <body>
+    <h1>ESP32 Motor Control</h1>
+    <p><button class="button" onclick="moveForward()">FORWARD</button></p>
+    <div style="clear: both;">
+      <p>
+        <button class="button" onclick="moveLeft()">LEFT</button>
+        <button class="button button2" onclick="stopRobot()">STOP</button>
+        <button class="button" onclick="moveRight()">RIGHT</button>
+      </p>
+    </div>
+    <p><button class="button" onclick="moveReverse()">REVERSE</button></p>
+    <p>Motor Speed: <span id="motorSpeed">0</span></p>
+    <input type="range" min="0" max="100" step="1" id="motorSlider" oninput="updateMotorSpeed(this.value)" value="0"/>
+     <!-- PID Tune -->
+    <p>
+      <button class="button" onclick="moveLeft()">Kp+</button>
+      <button class="button" onclick="moveRight()">Kp-</button>
+    </p>
+    <p>
+      <button class="button" onclick="moveLeft()">Kd+</button>
+      <button class="button" onclick="moveRight()">Kd-</button>
+    </p>
+    <p><button class="button2" onclick="moveForward()">Save</button></p>
+    
+    <div class="chart-container">
+      <!-- IMU Data Plots -->
+      <div id="chart-accel"></div>
+      <div id="chart-gyro"></div>
+    </div>
+  </body>
+</html>
+  
+  )rawliteral";
+  server.send(200, "text/html", html);
+}
