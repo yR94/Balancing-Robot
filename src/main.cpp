@@ -1,214 +1,263 @@
+
+// void InitTimer();
+// void InitTimer()
+// {
+//     Timer0_Cfg = timerBegin(0, 8000, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
+//     timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
+//     timerAlarmWrite(Timer0_Cfg, 2000, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms
+//     timerAlarmEnable(Timer0_Cfg);
+
+//     Timer1_Cfg = timerBegin(1, 80, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
+//     timerAttachInterrupt(Timer1_Cfg, &Timer1_ISR, true);
+//     timerAlarmWrite(Timer1_Cfg, 20, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms//Max Rate 3000
+//     timerAlarmEnable(Timer1_Cfg);
+// }
+// I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class
+// 10/7/2011 by Jeff Rowberg <jeff@rowberg.net>
+// Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
+//
+// Changelog:
+//      2013-05-08 - added multiple output formats
+//                 - added seamless Fastwire support
+//      2011-10-07 - initial release
+
+/* ============================================
+I2Cdev device library code is placed under the MIT license
+Copyright (c) 2011 Jeff Rowberg
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+===============================================
+*/
+
+// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
+// for both classes must be in the include path of your project
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include "SpeedStepper.h"
 #include <Arduino.h>
-#include <Wire.h>
-
-# define MPU_addr 0x68
-
-#define Acc_SF   8192.0
-#define Gyro_SF  32.8
-
-uint32_t i =0;
-
-float ax=0,ay=0,az=0,gx=0,gy=0,gz=0;
-float pitch=0,roll=0,yaw=0;
-float AccPitch=0,AccRoll=0;
-float GyroPitch=0,GyroRoll=0,GyroYaw=0;
-unsigned long T = 0;
-float dt = 0.005;
-
 
 hw_timer_t *Timer0_Cfg = NULL;
 hw_timer_t *Timer1_Cfg = NULL;
+const char* ssid     = "Yosef40";
+const char* password = "0545847144";
 
-uint64_t cnt=0,maxcnt=2;//maxcnt=50~600 fast  760~1100 slow
-
-
-void IMU_init();
-void IMU_Read();
-void InitTimer();
-
-void IRAM_ATTR Timer0_ISR()
-{
-
-  i++;
-
-
-digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
+// Create an instance of the WebServer on port 80
+WebServer server(80);
 
 
 
 
 
+Stepper StepperL(GPIO_NUM_32, GPIO_NUM_33, 0); // Pin 5 for step, Pin 18 for direction, Timer 0
+Stepper StepperR(GPIO_NUM_25, GPIO_NUM_26, 1); // Pin 5 for step, Pin 18 for direction, Timer 0
+
+#define Kp 1 //12
+#define Kd 1
+
+
+int lastCmd = 0;
+
+String valueString = String(0);
+
+void handleRoot() {
+  const char html[] PROGMEM = R"rawliteral(
+  <!DOCTYPE HTML><html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <style>
+      html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }
+      .button { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; background-color: #4CAF50; border: none; color: white; padding: 12px 28px; text-decoration: none; font-size: 26px; margin: 1px; cursor: pointer; }
+      .button2 {background-color: #555555;}
+    </style>
+    <script>
+      function moveForward() { fetch('/forward'); }
+      function moveLeft() { fetch('/left'); }
+      function stopRobot() { fetch('/stop'); }
+      function moveRight() { fetch('/right'); }
+      function moveReverse() { fetch('/reverse'); }
+
+      function updateMotorSpeed(pos) {
+        document.getElementById('motorSpeed').innerHTML = pos;
+        fetch(`/speed?value=${pos}`);
+      }
+    </script>
+  </head>
+  <body>
+    <h1>ESP32 Motor Control</h1>
+    <p><button class="button" onclick="moveForward()">FORWARD</button></p>
+    <div style="clear: both;">
+      <p>
+        <button class="button" onclick="moveLeft()">LEFT</button>
+        <button class="button button2" onclick="stopRobot()">STOP</button>
+        <button class="button" onclick="moveRight()">RIGHT</button>
+      </p>
+    </div>
+    <p><button class="button" onclick="moveReverse()">REVERSE</button></p>
+    <p>Motor Speed: <span id="motorSpeed">0</span></p>
+    <input type="range" min="0" max="100" step="1" id="motorSlider" oninput="updateMotorSpeed(this.value)" value="0"/>
+  </body>
+  </html>)rawliteral";
+  server.send(200, "text/html", html);
 }
 
-void IRAM_ATTR Timer1_ISR()
-{
-
-
-  if (cnt>maxcnt)
-{
- digitalWrite(GPIO_NUM_32,  HIGH);
- digitalWrite(GPIO_NUM_32, LOW);
- cnt=0;
+int Vel = 0;
+void handleStop() {
+  Serial.println("Stop");
+StepperL.setSpeed(0);
+StepperR.setSpeed(0); 
+  server.send(200);
+  lastCmd=0;
 }
-cnt++;
-  
+void handleForward() {
+  Serial.println("Forward");
+StepperL.setSpeed(Vel);
+StepperR.setSpeed(Vel);
+  server.send(200);
+  lastCmd=1;
+}
+
+void handleLeft() {
+  Serial.println("Left");
+StepperL.setSpeed(Vel);
+StepperR.setSpeed(-Vel);
+  server.send(200);
+  lastCmd=2;
 }
 
 
-/////////////////
+
+void handleRight() {
+  Serial.println("Right");
+StepperL.setSpeed(-Vel);
+StepperR.setSpeed(Vel); 
+  server.send(200);
+  lastCmd=3;
+}
+
+void handleReverse() {
+  Serial.println("Reverse");
+StepperL.setSpeed(-Vel);
+StepperR.setSpeed(-Vel);       
+  server.send(200);
+  lastCmd=4;
+}
+
+void handleSpeed() {
+  if (server.hasArg("value")) {
+    valueString = server.arg("value");
+    int value = valueString.toInt();
+    
+      Vel = map(value, 0, 100, 0, 1000);
+
+      Serial.println("Motor speed set to " + String(value));
+
+      switch (lastCmd)
+      {
+
+              case 1:
+       handleForward();
+        break;
+              case 2:
+        handleLeft();
+        break;
+              case 3:
+        handleRight();
+        break;
+              case 4:
+        handleReverse();
+        break;
+      
+      default:
+       handleStop();
+        break;
+      }
+    
+  }
+  server.send(200);
+}
+
+
 void setup() {
-  // put your setup code here, to run once:
-  pinMode(GPIO_NUM_33 ,OUTPUT);
-  pinMode(GPIO_NUM_32 ,OUTPUT);
-  pinMode(LED_BUILTIN,OUTPUT);
-  digitalWrite(LED_BUILTIN,HIGH);
-  Serial.begin(9600);
 
-   IMU_init();
-   InitTimer();
+    // initialize serial communication
+    // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
+    // it's really up to you depending on your project)
+    Serial.begin(38400);
 
+    //Wifi setings
+
+    
+  // Connect to Wi-Fi
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected.");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Define routes
+  server.on("/", handleRoot);
+  server.on("/forward", handleForward);
+  server.on("/left", handleLeft);
+  server.on("/stop", handleStop);
+  server.on("/right", handleRight);
+  server.on("/reverse", handleReverse);
+  server.on("/speed", handleSpeed);
+
+  // Start the server
+  server.begin();
+
+
+    // configure Arduino LED pin for output
+    pinMode(BUILTIN_LED, OUTPUT);
    
+    StepperL.begin();
+    StepperR.begin();
+    StepperL.setSpeed(0); // Set motor speed to 200 steps per second
+    StepperR.setSpeed(0); // Set motor speed to 200 steps per second
 
+   StepperR.Bip();
+   StepperR.Bip();
+   StepperR.Bip();
+    delay(500);
+        StepperL.Bip();
+        StepperL.Bip();
+        StepperL.Bip();
+    delay(100);
 
-   
- 
-
-
+    
 }
 
+bool overclock = 0;
 
-void InitTimer()
-{
-    Timer0_Cfg = timerBegin(0, 8000, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-    timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
-    timerAlarmWrite(Timer0_Cfg, 2000, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms
-    timerAlarmEnable(Timer0_Cfg);
-
-    Timer1_Cfg = timerBegin(1, 80, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-    timerAttachInterrupt(Timer1_Cfg, &Timer1_ISR, true);
-    timerAlarmWrite(Timer1_Cfg, 20, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms//Max Rate 3000
-    timerAlarmEnable(Timer1_Cfg);
-}
 void loop() {
 
-IMU_Read();
-
-GyroPitch = GyroPitch+gz*dt;
-AccPitch = -atan2(ay,ax)*180/PI;
-
-pitch = 0.98*(pitch+gz*dt) + 0.02*AccPitch;
-
-
-Serial.print(maxcnt);
-Serial.print("    ");
-Serial.println(pitch);
-// control
-
-pitch>0 ? digitalWrite(GPIO_NUM_33,  HIGH) : digitalWrite(GPIO_NUM_33,  LOW);  
-
-if (abs(pitch)<10)maxcnt=constrain(map(abs(pitch),0,10,8000,800),800,8000);//slow mode;
-else maxcnt=constrain(map(abs(pitch),10,60,460,30),30,460);//speed mode;
-//
-
-if (abs(pitch)<0.5)maxcnt=-1; // fully stop
-
-
-
-
-
-
-//Serial.print(micros()-T);
-//
-while (micros()-T<=dt*100000)
-{
- 
-}
-
-//Serial.println(micros()-T);
-T = micros() ;
-
-
+server.handleClient();
 
 }
 
 
-void IMU_Read()
-{
-  int16_t ax_raw,ay_raw,az_raw,gx_raw,gy_raw,gz_raw;
 
-Wire.beginTransmission(MPU_addr);
-Wire.write(0x3B);
-Wire.endTransmission(); 
-Wire.requestFrom(MPU_addr,6,true);
-ax_raw=Wire.read()<<8|Wire.read();
-ay_raw=Wire.read()<<8|Wire.read();
-az_raw=Wire.read()<<8|Wire.read();
-
-Wire.beginTransmission(MPU_addr);                                   //Start communication with the gyro Wire.write(0x43); 
-Wire.write(0x43);                                                        //Start reading the Who_am_I register 75h
-Wire.endTransmission();                                                 //End the transmission
-Wire.requestFrom(MPU_addr,6,true);
-gx_raw = (Wire.read() << 8 | Wire.read()) -48; // For a 250deg/s range we have to divide first the raw value by 131.0, according to the datasheet
-gy_raw = (Wire.read() << 8 | Wire.read()) +58;
-gz_raw = (Wire.read() << 8 | Wire.read()) -235;
-
-ax = ax_raw/Acc_SF;
-ay = ay_raw/Acc_SF;
-az = az_raw/Acc_SF;
-gx = gx_raw/Gyro_SF;
-gy = gy_raw/Gyro_SF;
-gz = gz_raw/Gyro_SF;
-
-
-
-/*
-
-Serial.print(ax);
-Serial.print(' ');
-Serial.print(ay);
-Serial.print(' ');
-Serial.print(az);
-Serial.print(' ');
-Serial.print(gx); 
-Serial.print(' ');
-Serial.print(gy);
-Serial.print(' ');
-Serial.println(gz);
-Serial.println("----------------------");
-*/
-}
-
-
-void IMU_GetAngels()
-{
-  
-}
-
-
-void IMU_init()
-{
-
-  
- Wire.begin();
-  //By default the MPU-6050 sleeps. So we have to wake it up.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x6B);                                                         //We want to write to the PWR_MGMT_1 register (6B hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00000000 to activate the gyro
-  Wire.endTransmission();                                                   //End the transmission with the gyro.
-  //Set the full scale of the gyro to +/- 250 degrees per second
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x1B);                                                         //We want to write to the GYRO_CONFIG register (1B hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00000000 (250dps full scale)
-  Wire.endTransmission();                                                   //End the transmission with the gyro
-  //Set the full scale of the accelerometer to +/- 4g.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x1C);                                                         //We want to write to the ACCEL_CONFIG register (1A hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00001000 (+/- 4g full scale range)
-  Wire.endTransmission();                                                   //End the transmission with the gyro
-  //Set some filtering to improve the raw data.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search
-  Wire.write(0x1A);                                                         //We want to write to the CONFIG register (1A hex)
-  Wire.write(0x03);                                                         //Set the register bits as 00000011 (Set Digital Low Pass Filter to ~43Hz)
-  Wire.endTransmission();  
-
-}
