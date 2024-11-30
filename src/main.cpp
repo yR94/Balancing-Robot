@@ -1,17 +1,3 @@
-
-// void InitTimer();
-// void InitTimer()
-// {
-//     Timer0_Cfg = timerBegin(0, 8000, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-//     timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
-//     timerAlarmWrite(Timer0_Cfg, 2000, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms
-//     timerAlarmEnable(Timer0_Cfg);
-
-//     Timer1_Cfg = timerBegin(1, 80, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-//     timerAttachInterrupt(Timer1_Cfg, &Timer1_ISR, true);
-//     timerAlarmWrite(Timer1_Cfg, 20, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms//Max Rate 3000
-//     timerAlarmEnable(Timer1_Cfg);
-// }
 // I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class
 // 10/7/2011 by Jeff Rowberg <jeff@rowberg.net>
 // Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
@@ -35,7 +21,7 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KdND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
@@ -47,123 +33,124 @@ THE SOFTWARE.
 
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
-#include <Arduino.h>
+#include "I2Cdev.h"
+#include "MPU6050.h"
+#include "SpeedStepper.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include "SpeedStepper.h"
 
 
-hw_timer_t *Timer0_Cfg = NULL;
-hw_timer_t *Timer1_Cfg = NULL;
+
 const char* ssid     = "Yosef40";
 const char* password = "0545847144";
 
-// Create an instance of the WebServer on port 80
-WebServer server(80);
 
 
+// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
+// is used in I2Cdev.h
+#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+    #include "Wire.h"
+#endif
 
-
+// class default I2C address is 0x68
+// specific I2C addresses may be passed as a parameter here
+// AD0 low = 0x68 (default for InvenSense evaluation board)
+// AD0 high = 0x69
+MPU6050 accelgyro;
+//MPU6050 accelgyro(0x69); // <-- use for AD0 high
+//MPU6050 accelgyro(0x68, &Wire1); // <-- use for AD0 low, but 2nd Wire (TWI/I2C) object
 
 Stepper StepperL(GPIO_NUM_32, GPIO_NUM_33, 0); // Pin 5 for step, Pin 18 for direction, Timer 0
 Stepper StepperR(GPIO_NUM_25, GPIO_NUM_26, 1); // Pin 5 for step, Pin 18 for direction, Timer 0
 
-#define Kp 1 //12
-#define Kd 1
+WebServer server(80);
 
 
-int lastCmd = 0;
+
+float Kp= 8.4; //12
+float Kd = 8.0;
+float offset = -7.11;
+
+
+
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
 
 String valueString = String(0);
 void handleRoot();
 
-int Vel = 0;
-void handleStop() {
-  Serial.println("Stop");
-StepperL.setSpeed(0);
-StepperR.setSpeed(0); 
-  server.send(200);
-  lastCmd=0;
-}
-void handleForward() {
-  Serial.println("Forward");
-StepperL.setSpeed(Vel);
-StepperR.setSpeed(Vel);
-  server.send(200);
-  lastCmd=1;
-}
-
-void handleLeft() {
-  Serial.println("Left");
-StepperL.setSpeed(Vel);
-StepperR.setSpeed(-Vel);
-  server.send(200);
-  lastCmd=2;
-}
 
 
+unsigned long T;
+float GyroPitch=0;
+float AccPitch=0; 
+float Pitch; 
+float a=0.002;
+float SF =1.9*131/32767.0;
+// uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
+// list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
+// not so easy to parse, and slow(er) over UART.
+#define OUTPUT_READABLE_ACCELGYRO
+int Ts  = 5000;
+// uncomment "OUTPUT_BINARY_ACCELGYRO" to send all 6 axes of data as 16-bit
+// binary, one right after the other. This is very fast (as fast as possible
+// without compression or data loss), and easy to parse, but impossible to read
+// for a human.
+//#define OUTPUT_BINARY_ACCELGYRO
 
-void handleRight() {
-  Serial.println("Right");
-StepperL.setSpeed(-Vel);
-StepperR.setSpeed(Vel); 
-  server.send(200);
-  lastCmd=3;
-}
 
-void handleReverse() {
-  Serial.println("Reverse");
-StepperL.setSpeed(-Vel);
-StepperR.setSpeed(-Vel);       
-  server.send(200);
-  lastCmd=4;
-}
+#define LED_PIN LED_BUILTIN
+bool blinkState = false;
 
-void handleSpeed() {
+void handleOffse() {
   if (server.hasArg("value")) {
     valueString = server.arg("value");
-    int value = valueString.toInt();
-    
-      Vel = map(value, 0, 100, 0, 1000);
-
-      Serial.println("Motor speed set to " + String(value));
-
-      switch (lastCmd)
-      {
-
-              case 1:
-       handleForward();
-        break;
-              case 2:
-        handleLeft();
-        break;
-              case 3:
-        handleRight();
-        break;
-              case 4:
-        handleReverse();
-        break;
-      
-      default:
-       handleStop();
-        break;
-      }
-    
+    float value = valueString.toFloat();
+    offset = value;
   }
   server.send(200);
 }
 
+void handleKp() {
+  if (server.hasArg("value")) {
+    valueString = server.arg("value");
+    Kp = valueString.toFloat();
+  }
+  server.send(200);
+}
+
+void handleKd() {
+  if (server.hasArg("value")) {
+    valueString = server.arg("value");
+    Kd = valueString.toFloat();
+  }
+  server.send(200);
+}
 
 void setup() {
+    // join I2C bus (I2Cdev library doesn't do this automatically)
+    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+        Wire.begin();
+    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+        Fastwire::setup(400, true);
+    #endif
 
     // initialize serial communication
     // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
     // it's really up to you depending on your project)
     Serial.begin(38400);
 
-    //Wifi setings
+    // initialize device
+    Serial.println("Initializing I2C devices...");
+    accelgyro.initialize();
 
-    
+    // verify connection
+    Serial.println("Testing device connections...");
+    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+   
+
   // Connect to Wi-Fi
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -177,32 +164,31 @@ void setup() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 
-  // Define routes
+    // Define routes
   server.on("/", handleRoot);
-  server.on("/forward", handleForward);
-  server.on("/left", handleLeft);
-  server.on("/stop", handleStop);
-  server.on("/right", handleRight);
-  server.on("/reverse", handleReverse);
-  server.on("/speed", handleSpeed);
+  server.on("/Kp", HTTP_GET, handleKp);
+  server.on("/Kd", HTTP_GET, handleKd);
+  server.on("/Offse", HTTP_GET, handleOffse);
 
   // Start the server
   server.begin();
 
 
+
     // configure Arduino LED pin for output
-    pinMode(BUILTIN_LED, OUTPUT);
-   
+    pinMode(LED_PIN, OUTPUT);
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    Pitch = atan2(az,-ax)*180/PI;
+
     StepperL.begin();
     StepperR.begin();
     StepperL.setSpeed(0); // Set motor speed to 200 steps per second
     StepperR.setSpeed(0); // Set motor speed to 200 steps per second
-digitalWrite(BUILTIN_LED,HIGH);
+
    StepperR.Bip();
    StepperR.Bip();
    StepperR.Bip();
     delay(500);
-
         StepperL.Bip();
         StepperL.Bip();
         StepperL.Bip();
@@ -214,9 +200,78 @@ digitalWrite(BUILTIN_LED,HIGH);
 bool overclock = 0;
 
 void loop() {
-
 server.handleClient();
-analogWrite(BUILTIN_LED,map(Vel,0,100,0,25));
+    if(overclock==0)
+    {
+  T=micros();
+    // read raw accel/gyro measurements from device
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    
+    // these methods (and a few others) are also available
+    //accelgyro.getAcceleration(&ax, &ay, &az);
+    //accelgyro.getRotation(&gx, &gy, &gz);
+
+
+        // display tab-separated accel/gyro x/y/z values
+        // Serial.print("a/g:\t");
+        // Serial.print(ax); Serial.print("\t");
+        // Serial.print(ay); Serial.print("\t");
+        // Serial.print(az); Serial.print("\t");
+        // Serial.print(gx); Serial.print("\t");
+        // Serial.print(gy); Serial.print("\t");
+        // Serial.println(gz);
+ 
+
+ AccPitch = atan2(az,-ax)*180/PI;
+ GyroPitch=0.95*GyroPitch+0.05*gy;
+ 
+ Pitch  = a*AccPitch +(1-a)*(Pitch-SF*gy*Ts*1e-6);
+
+float error;
+
+ error = Pitch-offset;
+
+
+  float controlSignal = (error*Kp-GyroPitch*SF*Kd);
+  StepperL.setSpeed(controlSignal);
+  StepperR.setSpeed(-controlSignal);
+
+
+
+//  Serial.print(Pitch);
+//  Serial.print(' ');
+//Serial.println(error);
+
+ Serial.print(Kd);
+ Serial.print(' ');
+ Serial.print(Kp);
+ Serial.print(' ');
+Serial.println(offset);
+
+
+    // blink LED to indicate activity
+    blinkState = !blinkState;
+    digitalWrite(LED_PIN, blinkState);
+
+    overclock = 0;
+    while (micros()-T<Ts)
+    {
+      overclock = 0;
+    }
+    }
+    else 
+    {
+      Serial.println("Overflow");
+    StepperL.setSpeed(0); // Set motor speed to 200 steps per second
+    StepperR.setSpeed(0); // Set motor speed to 200 steps per second
+    }
+
+    if(abs(Pitch)>30)
+    {
+    StepperL.setSpeed(0); // Set motor speed to 200 steps per second
+    StepperR.setSpeed(0); // Set motor speed to 200 steps per second
+    
+    }
 
 }
 
@@ -224,60 +279,94 @@ analogWrite(BUILTIN_LED,map(Vel,0,100,0,25));
 
 void handleRoot() {
   const char html[] PROGMEM = R"rawliteral(
-  <!DOCTYPE HTML><html>
-  <head>
+  <!DOCTYPE HTML>
+<html>
+<head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <link rel="icon" href="data:,">
     <style>
-      html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }
-      .button { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; background-color: #4CAF50; border: none; color: rgb(250, 250, 250); padding: 12px 28px; text-decoration: none; font-size: 26px; margin: 1px; cursor: pointer; }
-      .button2 {background-color: #555555;}
+        html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }
+        .button { background-color: #4CAF50; border: none; color: rgb(250, 250, 250); padding: 12px 28px; text-decoration: none; font-size: 26px; margin: 1px; cursor: pointer; }
+        .button2 {background-color: #555555;}
+        .slider-container { margin-top: 20px; }
+        .slider { width: 100%; max-width: 600px; }
     </style>
     <script>
-      function moveForward() { fetch('/forward'); }
-      function moveLeft() { fetch('/left'); }
-      function stopRobot() { fetch('/stop'); }
-      function moveRight() { fetch('/right'); }
-      function moveReverse() { fetch('/reverse'); }
-      function updateMotorSpeed(pos) {
-        document.getElementById('motorSpeed').innerHTML = pos;
-        fetch(`/speed?value=${pos}`);
-      }
+        function moveForward() { fetch('/forward'); }
+        function moveLeft() { fetch('/left'); }
+        function stopRobot() { fetch('/stop'); }
+        function moveRight() { fetch('/right'); }
+        function moveReverse() { fetch('/reverse'); }
+
+        function updateOffset(pos) {
+            document.getElementById('Offset').innerHTML = pos;
+            fetch(`/Offse?value=${pos}`);
+        }
+
+        function updateKp(pos) {
+            document.getElementById('KpValue').innerHTML = pos;
+            fetch(`/Kp?value=${pos}`);
+        }
+
+        function updateKd(pos) {
+            document.getElementById('KdValue').innerHTML = pos;
+            fetch(`/Kd?value=${pos}`);
+        }
     </script>
-  </head>
-  <body>
+</head>
+<body>
     <h1>ESP32 Motor Control</h1>
     <p><button class="button" onclick="moveForward()">FORWARD</button></p>
     <div style="clear: both;">
-      <p>
-        <button class="button" onclick="moveLeft()">LEFT</button>
-        <button class="button button2" onclick="stopRobot()">STOP</button>
-        <button class="button" onclick="moveRight()">RIGHT</button>
-      </p>
+        <p>
+            <button class="button" onclick="moveLeft()">LEFT</button>
+            <button class="button button2" onclick="stopRobot()">STOP</button>
+            <button class="button" onclick="moveRight()">RIGHT</button>
+        </p>
     </div>
     <p><button class="button" onclick="moveReverse()">REVERSE</button></p>
-    <p>Motor Speed: <span id="motorSpeed">0</span></p>
-    <input type="range" min="0" max="100" step="1" id="motorSlider" oninput="updateMotorSpeed(this.value)" value="0"/>
-     <!-- PID Tune -->
+
+    <!-- Slider for offset (pitch) -->
+    <div class="slider-container">
+        <p>Pitch Offset: <span id="Offset">0</span></p>
+        <input type="range" min="-10" max="10" step="0.05" id="motorSlider" oninput="updateOffset(this.value)" value="0" class="slider">
+    </div>
+
+    <!-- Sliders for Kp and Kd -->
+    <div class="slider-container">
+        <p>Kp: <span id="KpValue">8.4</span></p>
+        <input type="range" min="0" max="100" step="0.05" id="KpSlider" oninput="updateKp(this.value)" value="8.4" class="slider">
+    </div>
+    
+    <div class="slider-container">
+        <p>Kd: <span id="KdValue">0.0</span></p>
+        <input type="range" min="0" max="100" step="0.05" id="KdSlider" oninput="updateKd(this.value)" value="0.0" class="slider">
+    </div>
+
+    <!-- PID Tune -->
     <p>
-      <button class="button" onclick="moveLeft()">Kp+</button>
-      <button class="button" onclick="moveRight()">Kp-</button>
+        <button class="button" onclick="moveLeft()">Kp+</button>
+        <button class="button" onclick="moveRight()">Kp-</button>
     </p>
     <p>
-      <button class="button" onclick="moveLeft()">Kd+</button>
-      <button class="button" onclick="moveRight()">Kd-</button>
+        <button class="button" onclick="moveLeft()">Kd+</button>
+        <button class="button" onclick="moveRight()">Kd-</button>
     </p>
-    <p><button class="button2" onclick="moveForward()">Save</button></p>
     
     <div class="chart-container">
-      <!-- IMU Data Plots -->
-      <div id="chart-accel"></div>
-      <div id="chart-gyro"></div>
+        <!-- IMU Data Plots (empty for now) -->
+        <div id="chart-accel"></div>
+        <div id="chart-gyro"></div>
     </div>
-  </body>
+</body>
 </html>
+
   
   )rawliteral";
   server.send(200, "text/html", html);
 }
+
+
+
+
