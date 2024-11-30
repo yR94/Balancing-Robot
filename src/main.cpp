@@ -103,7 +103,11 @@ int Ts  = 5000;
 
 #define LED_PIN LED_BUILTIN
 bool blinkState = false;
-
+void handleCurrentPitch() {
+  // Send the current pitch value as a response
+  String pitchString = String(Pitch);
+  server.send(200, "text/plain", pitchString);  // Return the pitch as plain text
+}
 void handleOffse() {
   if (server.hasArg("value")) {
     valueString = server.arg("value");
@@ -169,7 +173,8 @@ void setup() {
   server.on("/Kp", HTTP_GET, handleKp);
   server.on("/Kd", HTTP_GET, handleKd);
   server.on("/Offse", HTTP_GET, handleOffse);
-
+  server.on("/currentPitch", HTTP_GET, handleCurrentPitch);
+  
   // Start the server
   server.begin();
 
@@ -242,11 +247,6 @@ float error;
 //  Serial.print(' ');
 //Serial.println(error);
 
- Serial.print(Kd);
- Serial.print(' ');
- Serial.print(Kp);
- Serial.print(' ');
-Serial.println(offset);
 
 
     // blink LED to indicate activity
@@ -309,10 +309,22 @@ void handleRoot() {
             fetch(`/Kp?value=${pos}`);
         }
 
-        function updateKd(pos) {
-            document.getElementById('KdValue').innerHTML = pos;
-            fetch(`/Kd?value=${pos}`);
+        function updateKi(pos) {
+            document.getElementById('KiValue').innerHTML = pos;
+            fetch(`/Ki?value=${pos}`);
         }
+
+        // Fetch the current pitch and update the display
+        function fetchCurrentPitch() {
+            fetch('/currentPitch')
+                .then(response => response.text())
+                .then(pitch => {
+                    document.getElementById('currentPitch').innerHTML = pitch;  // Update pitch on the page
+                });
+        }
+
+        // Fetch the current pitch every second
+        setInterval(fetchCurrentPitch, 100);
     </script>
 </head>
 <body>
@@ -333,15 +345,20 @@ void handleRoot() {
         <input type="range" min="-10" max="10" step="0.05" id="motorSlider" oninput="updateOffset(this.value)" value="0" class="slider">
     </div>
 
-    <!-- Sliders for Kp and Kd -->
+    <!-- Sliders for Kp and Ki -->
     <div class="slider-container">
         <p>Kp: <span id="KpValue">8.4</span></p>
-        <input type="range" min="0" max="100" step="0.05" id="KpSlider" oninput="updateKp(this.value)" value="8.4" class="slider">
+        <input type="range" min="0" max="20" step="0.05" id="KpSlider" oninput="updateKp(this.value)" value="8.4" class="slider">
     </div>
     
     <div class="slider-container">
-        <p>Kd: <span id="KdValue">0.0</span></p>
-        <input type="range" min="0" max="100" step="0.05" id="KdSlider" oninput="updateKd(this.value)" value="0.0" class="slider">
+        <p>Ki: <span id="KiValue">0.0</span></p>
+        <input type="range" min="0" max="5" step="0.05" id="KiSlider" oninput="updateKi(this.value)" value="0.0" class="slider">
+    </div>
+
+    <!-- Display current pitch value -->
+    <div class="slider-container">
+        <p>Current Pitch: <span id="currentPitch">0</span>°</p>
     </div>
 
     <!-- PID Tune -->
@@ -361,6 +378,7 @@ void handleRoot() {
     </div>
 </body>
 </html>
+
 
   
   )rawliteral";
