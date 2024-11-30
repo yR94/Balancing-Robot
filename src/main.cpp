@@ -1,214 +1,203 @@
-#include <Arduino.h>
-#include <Wire.h>
+// I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class
+// 10/7/2011 by Jeff Rowberg <jeff@rowberg.net>
+// Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
+//
+// Changelog:
+//      2013-05-08 - added multiple output formats
+//                 - added seamless Fastwire support
+//      2011-10-07 - initial release
 
-# define MPU_addr 0x68
+/* ============================================
+I2Cdev device library code is placed under the MIT license
+Copyright (c) 2011 Jeff Rowberg
 
-#define Acc_SF   8192.0
-#define Gyro_SF  32.8
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-uint32_t i =0;
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
-float ax=0,ay=0,az=0,gx=0,gy=0,gz=0;
-float pitch=0,roll=0,yaw=0;
-float AccPitch=0,AccRoll=0;
-float GyroPitch=0,GyroRoll=0,GyroYaw=0;
-unsigned long T = 0;
-float dt = 0.005;
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+===============================================
+*/
 
-
-hw_timer_t *Timer0_Cfg = NULL;
-hw_timer_t *Timer1_Cfg = NULL;
-
-uint64_t cnt=0,maxcnt=2;//maxcnt=50~600 fast  760~1100 slow
-
-
-void IMU_init();
-void IMU_Read();
-void InitTimer();
-
-void IRAM_ATTR Timer0_ISR()
-{
-
-  i++;
-
-
-digitalWrite(LED_BUILTIN,i%2==0 ? HIGH : LOW);
-
-
-
-
-
-}
-
-void IRAM_ATTR Timer1_ISR()
-{
+// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
+// for both classes must be in the include path of your project
+#include "I2Cdev.h"
+#include "MPU6050.h"
+#include "SpeedStepper.h"
 
 
-  if (cnt>maxcnt)
-{
- digitalWrite(GPIO_NUM_32,  HIGH);
- digitalWrite(GPIO_NUM_32, LOW);
- cnt=0;
-}
-cnt++;
-  
-}
 
 
-/////////////////
+// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
+// is used in I2Cdev.h
+#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+    #include "Wire.h"
+#endif
+
+// class default I2C address is 0x68
+// specific I2C addresses may be passed as a parameter here
+// AD0 low = 0x68 (default for InvenSense evaluation board)
+// AD0 high = 0x69
+MPU6050 accelgyro;
+//MPU6050 accelgyro(0x69); // <-- use for AD0 high
+//MPU6050 accelgyro(0x68, &Wire1); // <-- use for AD0 low, but 2nd Wire (TWI/I2C) object
+
+Stepper StepperL(GPIO_NUM_32, GPIO_NUM_33, 0); // Pin 5 for step, Pin 18 for direction, Timer 0
+Stepper StepperR(GPIO_NUM_25, GPIO_NUM_26, 1); // Pin 5 for step, Pin 18 for direction, Timer 0
+
+#define Kp 8.4 //12
+#define Kd 8
+
+
+
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+unsigned long T;
+float GyroPitch=0;
+float AccPitch=0; 
+float Pitch; 
+float a=0.002;
+float SF =1.9*131/32767.0;
+// uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
+// list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
+// not so easy to parse, and slow(er) over UART.
+#define OUTPUT_READABLE_ACCELGYRO
+int Ts  = 5000;
+// uncomment "OUTPUT_BINARY_ACCELGYRO" to send all 6 axes of data as 16-bit
+// binary, one right after the other. This is very fast (as fast as possible
+// without compression or data loss), and easy to parse, but impossible to read
+// for a human.
+//#define OUTPUT_BINARY_ACCELGYRO
+
+
+#define LED_PIN LED_BUILTIN
+bool blinkState = false;
+
+
+
 void setup() {
-  // put your setup code here, to run once:
-  pinMode(GPIO_NUM_33 ,OUTPUT);
-  pinMode(GPIO_NUM_32 ,OUTPUT);
-  pinMode(LED_BUILTIN,OUTPUT);
-  digitalWrite(LED_BUILTIN,HIGH);
-  Serial.begin(9600);
+    // join I2C bus (I2Cdev library doesn't do this automatically)
+    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+        Wire.begin();
+    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+        Fastwire::setup(400, true);
+    #endif
 
-   IMU_init();
-   InitTimer();
+    // initialize serial communication
+    // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
+    // it's really up to you depending on your project)
+    Serial.begin(38400);
 
+    // initialize device
+    Serial.println("Initializing I2C devices...");
+    accelgyro.initialize();
+
+    // verify connection
+    Serial.println("Testing device connections...");
+    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
    
+    
 
+    // configure Arduino LED pin for output
+    pinMode(LED_PIN, OUTPUT);
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    Pitch = atan2(az,-ax)*180/PI;
 
-   
- 
+    StepperL.begin();
+    StepperR.begin();
+    StepperL.setSpeed(0); // Set motor speed to 200 steps per second
+    StepperR.setSpeed(0); // Set motor speed to 200 steps per second
 
+   StepperR.Bip();
+   StepperR.Bip();
+   StepperR.Bip();
+    delay(500);
+        StepperL.Bip();
+        StepperL.Bip();
+        StepperL.Bip();
+    delay(100);
 
+    
 }
 
+bool overclock = 0;
 
-void InitTimer()
-{
-    Timer0_Cfg = timerBegin(0, 8000, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-    timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
-    timerAlarmWrite(Timer0_Cfg, 2000, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms
-    timerAlarmEnable(Timer0_Cfg);
-
-    Timer1_Cfg = timerBegin(1, 80, true);//clock set to 80 MHz by setting the divder to 800 the gets 100 us increments => 800/80e-6 = 100e-6
-    timerAttachInterrupt(Timer1_Cfg, &Timer1_ISR, true);
-    timerAlarmWrite(Timer1_Cfg, 20, true); // by seting the overflow to 1000 we gets 1000*100e-6 = 10 ms//Max Rate 3000
-    timerAlarmEnable(Timer1_Cfg);
-}
 void loop() {
 
-IMU_Read();
-
-GyroPitch = GyroPitch+gz*dt;
-AccPitch = -atan2(ay,ax)*180/PI;
-
-pitch = 0.98*(pitch+gz*dt) + 0.02*AccPitch;
-
-
-Serial.print(maxcnt);
-Serial.print("    ");
-Serial.println(pitch);
-// control
-
-pitch>0 ? digitalWrite(GPIO_NUM_33,  HIGH) : digitalWrite(GPIO_NUM_33,  LOW);  
-
-if (abs(pitch)<10)maxcnt=constrain(map(abs(pitch),0,10,8000,800),800,8000);//slow mode;
-else maxcnt=constrain(map(abs(pitch),10,60,460,30),30,460);//speed mode;
-//
-
-if (abs(pitch)<0.5)maxcnt=-1; // fully stop
+    if(overclock==0)
+    {
+  T=micros();
+    // read raw accel/gyro measurements from device
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    
+    // these methods (and a few others) are also available
+    //accelgyro.getAcceleration(&ax, &ay, &az);
+    //accelgyro.getRotation(&gx, &gy, &gz);
 
 
-
-
-
-
-//Serial.print(micros()-T);
-//
-while (micros()-T<=dt*100000)
-{
+        // display tab-separated accel/gyro x/y/z values
+        // Serial.print("a/g:\t");
+        // Serial.print(ax); Serial.print("\t");
+        // Serial.print(ay); Serial.print("\t");
+        // Serial.print(az); Serial.print("\t");
+        // Serial.print(gx); Serial.print("\t");
+        // Serial.print(gy); Serial.print("\t");
+        // Serial.println(gz);
  
-}
 
-//Serial.println(micros()-T);
-T = micros() ;
+ AccPitch = atan2(az,-ax)*180/PI;
+ GyroPitch=0.95*GyroPitch+0.05*gy;
+ 
+ Pitch  = a*AccPitch +(1-a)*(Pitch-SF*gy*Ts*1e-6);
 
+float error;
 
-
-}
-
-
-void IMU_Read()
-{
-  int16_t ax_raw,ay_raw,az_raw,gx_raw,gy_raw,gz_raw;
-
-Wire.beginTransmission(MPU_addr);
-Wire.write(0x3B);
-Wire.endTransmission(); 
-Wire.requestFrom(MPU_addr,6,true);
-ax_raw=Wire.read()<<8|Wire.read();
-ay_raw=Wire.read()<<8|Wire.read();
-az_raw=Wire.read()<<8|Wire.read();
-
-Wire.beginTransmission(MPU_addr);                                   //Start communication with the gyro Wire.write(0x43); 
-Wire.write(0x43);                                                        //Start reading the Who_am_I register 75h
-Wire.endTransmission();                                                 //End the transmission
-Wire.requestFrom(MPU_addr,6,true);
-gx_raw = (Wire.read() << 8 | Wire.read()) -48; // For a 250deg/s range we have to divide first the raw value by 131.0, according to the datasheet
-gy_raw = (Wire.read() << 8 | Wire.read()) +58;
-gz_raw = (Wire.read() << 8 | Wire.read()) -235;
-
-ax = ax_raw/Acc_SF;
-ay = ay_raw/Acc_SF;
-az = az_raw/Acc_SF;
-gx = gx_raw/Gyro_SF;
-gy = gy_raw/Gyro_SF;
-gz = gz_raw/Gyro_SF;
+ error = Pitch-8.0;
+ StepperL.setSpeed((error*Kp-GyroPitch*SF*Kd));
+ StepperR.setSpeed(-(error*Kp-GyroPitch*SF*Kd));
 
 
+//  Serial.print(Pitch);
+//  Serial.print(' ');
+Serial.println(error);
+    // blink LED to indicate activity
+    blinkState = !blinkState;
+    digitalWrite(LED_PIN, blinkState);
 
-/*
+    overclock = 0;
+    while (micros()-T<Ts)
+    {
+      overclock = 0;
+    }
+    }
+    else 
+    {
+      Serial.println("Overflow");
+    StepperL.setSpeed(0); // Set motor speed to 200 steps per second
+    StepperR.setSpeed(0); // Set motor speed to 200 steps per second
+    }
 
-Serial.print(ax);
-Serial.print(' ');
-Serial.print(ay);
-Serial.print(' ');
-Serial.print(az);
-Serial.print(' ');
-Serial.print(gx); 
-Serial.print(' ');
-Serial.print(gy);
-Serial.print(' ');
-Serial.println(gz);
-Serial.println("----------------------");
-*/
-}
-
-
-void IMU_GetAngels()
-{
-  
-}
-
-
-void IMU_init()
-{
-
-  
- Wire.begin();
-  //By default the MPU-6050 sleeps. So we have to wake it up.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x6B);                                                         //We want to write to the PWR_MGMT_1 register (6B hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00000000 to activate the gyro
-  Wire.endTransmission();                                                   //End the transmission with the gyro.
-  //Set the full scale of the gyro to +/- 250 degrees per second
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x1B);                                                         //We want to write to the GYRO_CONFIG register (1B hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00000000 (250dps full scale)
-  Wire.endTransmission();                                                   //End the transmission with the gyro
-  //Set the full scale of the accelerometer to +/- 4g.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search.
-  Wire.write(0x1C);                                                         //We want to write to the ACCEL_CONFIG register (1A hex)
-  Wire.write(0x00);                                                         //Set the register bits as 00001000 (+/- 4g full scale range)
-  Wire.endTransmission();                                                   //End the transmission with the gyro
-  //Set some filtering to improve the raw data.
-  Wire.beginTransmission(MPU_addr);                                     //Start communication with the address found during search
-  Wire.write(0x1A);                                                         //We want to write to the CONFIG register (1A hex)
-  Wire.write(0x03);                                                         //Set the register bits as 00000011 (Set Digital Low Pass Filter to ~43Hz)
-  Wire.endTransmission();  
+    if(abs(Pitch)>30)
+    {
+    StepperL.setSpeed(0); // Set motor speed to 200 steps per second
+    StepperR.setSpeed(0); // Set motor speed to 200 steps per second
+    
+    }
 
 }
+
+
+

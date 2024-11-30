@@ -18,16 +18,17 @@ public:
     void Bip();
 
 
-    int get_cnt();
+    int64_t get_cnt();
 
 private:
     // GPIO pins
     gpio_num_t StepPin;
     gpio_num_t DirPin;
     int TimerNum;
-    int cnt;
+    int64_t cnt;
     float Speed;
     int dir;
+    
 
     // Static pointers to an instance of Stepper for each motor
     static Stepper* instance0;  // For Timer 0
