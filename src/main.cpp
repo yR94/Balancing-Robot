@@ -68,10 +68,10 @@ WebServer server(80);
 
 
 
-float Kp= 8.4; //12
-float Kd = 8.0;
-float offset = -7.11;
-
+float Kp= 85.0; //12
+float Ki = 0.1;
+float offset = 0;
+float Kd = 0.0;
 
 
 int16_t ax, ay, az;
@@ -87,8 +87,8 @@ unsigned long T;
 float GyroPitch=0;
 float AccPitch=0; 
 float Pitch; 
-float a=0.002;
-float SF =1.9*131/32767.0;
+float a=0.05;
+float SF = 2.0*131/32767.0;
 // uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
 // list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
 // not so easy to parse, and slow(er) over UART.
@@ -121,6 +121,14 @@ void handleKp() {
   if (server.hasArg("value")) {
     valueString = server.arg("value");
     Kp = valueString.toFloat();
+  }
+  server.send(200);
+}
+
+void handleKi() {
+  if (server.hasArg("value")) {
+    valueString = server.arg("value");
+    Ki = valueString.toFloat();
   }
   server.send(200);
 }
@@ -203,6 +211,8 @@ void setup() {
 }
 
 bool overclock = 0;
+float error=0;
+float controlSignal=0;
 
 void loop() {
 server.handleClient();
@@ -232,28 +242,29 @@ server.handleClient();
  
  Pitch  = a*AccPitch +(1-a)*(Pitch-SF*gy*Ts*1e-6);
 
-float error;
-
- error = Pitch-offset;
 
 
-  float controlSignal = (error*Kp-GyroPitch*SF*Kd);
+ error = (Pitch-offset-6.58);
+
+
+  controlSignal = (error*Kp)*Ki+(1-Ki)*controlSignal;
   StepperL.setSpeed(controlSignal);
   StepperR.setSpeed(-controlSignal);
 
 
 
-//  Serial.print(Pitch);
-//  Serial.print(' ');
-//Serial.println(error);
+ Serial.print(Pitch);
+ Serial.print(' ');
+Serial.println(error);
 
 
 
     // blink LED to indicate activity
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
+    //Serial.println(micros()-T);
 
-    overclock = 0;
+    overclock = 1;
     while (micros()-T<Ts)
     {
       overclock = 0;
@@ -324,7 +335,7 @@ void handleRoot() {
         }
 
         // Fetch the current pitch every second
-        setInterval(fetchCurrentPitch, 100);
+        setInterval(fetchCurrentPitch, 2000);
     </script>
 </head>
 <body>
@@ -348,12 +359,12 @@ void handleRoot() {
     <!-- Sliders for Kp and Ki -->
     <div class="slider-container">
         <p>Kp: <span id="KpValue">8.4</span></p>
-        <input type="range" min="0" max="20" step="0.05" id="KpSlider" oninput="updateKp(this.value)" value="8.4" class="slider">
+        <input type="range" min="0" max="200" step="0.05" id="KpSlider" oninput="updateKp(this.value)" value="84.0" class="slider">
     </div>
     
     <div class="slider-container">
         <p>Ki: <span id="KiValue">0.0</span></p>
-        <input type="range" min="0" max="5" step="0.05" id="KiSlider" oninput="updateKi(this.value)" value="0.0" class="slider">
+        <input type="range" min="0" max="1" step="0.001" id="KiSlider" oninput="updateKi(this.value)" value="0.95" class="slider">
     </div>
 
     <!-- Display current pitch value -->
