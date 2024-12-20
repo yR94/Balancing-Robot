@@ -68,11 +68,12 @@ WebServer server(80);
 
 
 
-float Kp= 85.0; //12
-float Ki = 0.1;
+float Kp = 380.0; //12
+float LPF = 0.04;
 float offset = 0;
 float Kd = 0.0;
-
+float PosKd = 0.0000;
+float PosKp = 0.0001;
 
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
@@ -87,7 +88,7 @@ unsigned long T;
 float GyroPitch=0;
 float AccPitch=0; 
 float Pitch; 
-float a=0.05;
+float a=0.01;
 float SF = 2.0*131/32767.0;
 // uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
 // list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
@@ -111,8 +112,8 @@ void handleCurrentPitch() {
 void handleOffse() {
   if (server.hasArg("value")) {
     valueString = server.arg("value");
-    float value = valueString.toFloat();
-    offset = value;
+    offset = valueString.toFloat();
+   
   }
   server.send(200);
 }
@@ -120,15 +121,15 @@ void handleOffse() {
 void handleKp() {
   if (server.hasArg("value")) {
     valueString = server.arg("value");
-    Kp = valueString.toFloat();
+    PosKp = valueString.toFloat();
   }
   server.send(200);
 }
 
-void handleKi() {
+void handleLPF() {
   if (server.hasArg("value")) {
     valueString = server.arg("value");
-    Ki = valueString.toFloat();
+    PosKd = valueString.toFloat();
   }
   server.send(200);
 }
@@ -179,7 +180,7 @@ void setup() {
     // Define routes
   server.on("/", handleRoot);
   server.on("/Kp", HTTP_GET, handleKp);
-  server.on("/Kd", HTTP_GET, handleKd);
+  server.on("/LPF", HTTP_GET, handleLPF);
   server.on("/Offse", HTTP_GET, handleOffse);
   server.on("/currentPitch", HTTP_GET, handleCurrentPitch);
   
@@ -213,6 +214,9 @@ void setup() {
 bool overclock = 0;
 float error=0;
 float controlSignal=0;
+float linearDist = 0;
+
+
 
 void loop() {
 server.handleClient();
@@ -221,38 +225,29 @@ server.handleClient();
   T=micros();
     // read raw accel/gyro measurements from device
     accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-    
-    // these methods (and a few others) are also available
-    //accelgyro.getAcceleration(&ax, &ay, &az);
-    //accelgyro.getRotation(&gx, &gy, &gz);
-
-
-        // display tab-separated accel/gyro x/y/z values
-        // Serial.print("a/g:\t");
-        // Serial.print(ax); Serial.print("\t");
-        // Serial.print(ay); Serial.print("\t");
-        // Serial.print(az); Serial.print("\t");
-        // Serial.print(gx); Serial.print("\t");
-        // Serial.print(gy); Serial.print("\t");
-        // Serial.println(gz);
+  
  
 
  AccPitch = atan2(az,-ax)*180/PI;
- GyroPitch=0.95*GyroPitch+0.05*gy;
+// GyroPitch=0.95*GyroPitch+0.05*gy;
  
  Pitch  = a*AccPitch +(1-a)*(Pitch-SF*gy*Ts*1e-6);
 
+linearDist = -constrain(StepperL.get_cnt()*0.001*PosKp+0.001*controlSignal*PosKd,-10,10);
+
+ error = (Pitch-offset-linearDist);
 
 
- error = (Pitch-offset-6.58);
+  controlSignal = (error*Kp)*LPF+(1-LPF)*controlSignal;
 
-
-  controlSignal = (error*Kp)*Ki+(1-Ki)*controlSignal;
   StepperL.setSpeed(controlSignal);
   StepperR.setSpeed(-controlSignal);
 
 
+//linearDist = 0;
 
+Serial.print(linearDist);
+ Serial.print(' ');
  Serial.print(Pitch);
  Serial.print(' ');
 Serial.println(error);
@@ -309,6 +304,7 @@ void handleRoot() {
         function stopRobot() { fetch('/stop'); }
         function moveRight() { fetch('/right'); }
         function moveReverse() { fetch('/reverse'); }
+        
 
         function updateOffset(pos) {
             document.getElementById('Offset').innerHTML = pos;
@@ -320,9 +316,9 @@ void handleRoot() {
             fetch(`/Kp?value=${pos}`);
         }
 
-        function updateKi(pos) {
-            document.getElementById('KiValue').innerHTML = pos;
-            fetch(`/Ki?value=${pos}`);
+        function updateLPF(pos) {
+            document.getElementById('LPFValue').innerHTML = pos;
+            fetch(`/LPF?value=${pos}`);
         }
 
         // Fetch the current pitch and update the display
@@ -335,7 +331,7 @@ void handleRoot() {
         }
 
         // Fetch the current pitch every second
-        setInterval(fetchCurrentPitch, 2000);
+        setInterval(fetchCurrentPitch, 500);
     </script>
 </head>
 <body>
@@ -356,15 +352,15 @@ void handleRoot() {
         <input type="range" min="-10" max="10" step="0.05" id="motorSlider" oninput="updateOffset(this.value)" value="0" class="slider">
     </div>
 
-    <!-- Sliders for Kp and Ki -->
+    <!-- Sliders for Kp and LPF -->
     <div class="slider-container">
         <p>Kp: <span id="KpValue">8.4</span></p>
-        <input type="range" min="0" max="200" step="0.05" id="KpSlider" oninput="updateKp(this.value)" value="84.0" class="slider">
+        <input type="range" min="0" max="4" step="0.0001" id="KpSlider" oninput="updateKp(this.value)" value="84.0" class="slider">
     </div>
     
     <div class="slider-container">
-        <p>Ki: <span id="KiValue">0.0</span></p>
-        <input type="range" min="0" max="1" step="0.001" id="KiSlider" oninput="updateKi(this.value)" value="0.95" class="slider">
+        <p>LPF: <span id="LPFValue">0.0</span></p>
+        <input type="range" min="0" max="4" step="0.0001" id="LPFSlider" oninput="updateLPF(this.value)" value="0.95" class="slider">
     </div>
 
     <!-- Display current pitch value -->
