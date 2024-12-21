@@ -72,8 +72,8 @@ float Kp = 380.0; //12
 float LPF = 0.04;
 float offset = 0;
 float Kd = 0.0;
-float PosKd = 0.0000;
-float PosKp = 0.0001;
+float PosKd = 16;
+float PosKp = 3;
 
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
@@ -233,7 +233,7 @@ server.handleClient();
  
  Pitch  = a*AccPitch +(1-a)*(Pitch-SF*gy*Ts*1e-6);
 
-linearDist = -constrain(StepperL.get_cnt()*0.001*PosKp+0.001*controlSignal*PosKd,-10,10);
+linearDist =0.95*linearDist -0.05*constrain(StepperL.get_cnt()*0.001*PosKp+0.001*controlSignal*PosKd,-5,5);
 
  error = (Pitch-offset-linearDist);
 
@@ -355,12 +355,12 @@ void handleRoot() {
     <!-- Sliders for Kp and LPF -->
     <div class="slider-container">
         <p>Kp: <span id="KpValue">8.4</span></p>
-        <input type="range" min="0" max="4" step="0.0001" id="KpSlider" oninput="updateKp(this.value)" value="84.0" class="slider">
+        <input type="range" min="0" max="40" step="0.0001" id="KpSlider" oninput="updateKp(this.value)" value="84.0" class="slider">
     </div>
     
     <div class="slider-container">
         <p>LPF: <span id="LPFValue">0.0</span></p>
-        <input type="range" min="0" max="4" step="0.0001" id="LPFSlider" oninput="updateLPF(this.value)" value="0.95" class="slider">
+        <input type="range" min="0" max="40" step="0.0001" id="LPFSlider" oninput="updateLPF(this.value)" value="0.95" class="slider">
     </div>
 
     <!-- Display current pitch value -->
