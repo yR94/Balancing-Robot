@@ -90,6 +90,13 @@ float AccPitch=0;
 float Pitch; 
 float a=0.01;
 float SF = 2.0*131/32767.0;
+
+float PosRef = 0;
+float PosSpeed = 0;
+
+float RotSpeedL = 0;
+float RotSpeedR = 0;
+
 // uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
 // list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
 // not so easy to parse, and slow(er) over UART.
@@ -142,6 +149,40 @@ void handleKd() {
   server.send(200);
 }
 
+
+
+void handleForward() {
+PosSpeed+=10;
+  server.send(200);
+}
+
+void handleLeft() {
+ RotSpeedL += 10;
+ RotSpeedR -= 10;
+  server.send(200);
+}
+
+void handleStope() {
+PosSpeed=0;
+ RotSpeedL = 0;
+ RotSpeedR = 0;
+ Serial.println("Stop!");
+  server.send(200);
+}
+
+void handleReverse() {
+PosSpeed-=10;
+  server.send(200);
+}
+void handleRight() {
+ RotSpeedL -= 10;
+ RotSpeedR += 10;
+  server.send(200);
+}
+
+
+
+
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -183,6 +224,13 @@ void setup() {
   server.on("/LPF", HTTP_GET, handleLPF);
   server.on("/Offse", HTTP_GET, handleOffse);
   server.on("/currentPitch", HTTP_GET, handleCurrentPitch);
+
+  server.on("/forward", HTTP_GET, handleForward);
+  server.on("/left", HTTP_GET, handleLeft);
+  server.on("/stope", HTTP_GET, handleStope);
+  server.on("/reverse", HTTP_GET, handleReverse);
+  server.on("/right", HTTP_GET, handleRight);
+
   
   // Start the server
   server.begin();
@@ -233,15 +281,17 @@ server.handleClient();
  
  Pitch  = a*AccPitch +(1-a)*(Pitch-SF*gy*Ts*1e-6);
 
-linearDist =0.95*linearDist -0.05*constrain(StepperL.get_cnt()*0.001*PosKp+0.001*controlSignal*PosKd,-5,5);
+ PosRef=PosRef+PosSpeed;
+
+linearDist =0.95*linearDist -0.05*constrain((StepperL.get_cnt()-PosRef)*0.001*PosKp+0.001*controlSignal*PosKd,-8,8);
 
  error = (Pitch-offset-linearDist);
 
 
   controlSignal = (error*Kp)*LPF+(1-LPF)*controlSignal;
 
-  StepperL.setSpeed(controlSignal);
-  StepperR.setSpeed(-controlSignal);
+  StepperL.setSpeed(controlSignal+RotSpeedL);
+  StepperR.setSpeed(-controlSignal-RotSpeedR);
 
 
 //linearDist = 0;
@@ -340,7 +390,7 @@ void handleRoot() {
     <div style="clear: both;">
         <p>
             <button class="button" onclick="moveLeft()">LEFT</button>
-            <button class="button button2" onclick="stopRobot()">STOP</button>
+            <button class="button" onclick="stopRobot()">STOP</button>
             <button class="button" onclick="moveRight()">RIGHT</button>
         </p>
     </div>
