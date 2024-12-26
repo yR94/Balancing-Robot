@@ -227,7 +227,7 @@ void setup() {
 
   server.on("/forward", HTTP_GET, handleForward);
   server.on("/left", HTTP_GET, handleLeft);
-  server.on("/stope", HTTP_GET, handleStope);
+  server.on("/stop", HTTP_GET, handleStope);
   server.on("/reverse", HTTP_GET, handleReverse);
   server.on("/right", HTTP_GET, handleRight);
 
@@ -283,7 +283,7 @@ server.handleClient();
 
  PosRef=PosRef+PosSpeed;
 
-linearDist =0.95*linearDist -0.05*constrain((StepperL.get_cnt()-PosRef)*0.001*PosKp+0.001*controlSignal*PosKd,-8,8);
+linearDist =0.95*linearDist -0.05*constrain(((StepperL.get_cnt()-StepperR.get_cnt())/2-PosRef)*0.001*PosKp+0.001*controlSignal*PosKd,-8,8);
 
  error = (Pitch-offset-linearDist);
 
