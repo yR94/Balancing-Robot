@@ -97,6 +97,8 @@ float PosSpeed = 0;
 float RotSpeedL = 0;
 float RotSpeedR = 0;
 
+bool Mode = 1;
+
 // uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
 // list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
 // not so easy to parse, and slow(er) over UART.
@@ -151,6 +153,7 @@ void handleKd() {
 
 
 
+
 void handleForward() {
 PosSpeed-=10;
   server.send(200);
@@ -180,7 +183,16 @@ void handleRight() {
   server.send(200);
 }
 
+void handlePosHold() {
+Mode=1;
+PosRef = (StepperL.get_cnt()-StepperR.get_cnt())/2;
+  server.send(200);
+}
 
+void handleStab() {
+Mode=0;
+  server.send(200);
+}
 
 
 void setup() {
@@ -230,6 +242,9 @@ void setup() {
   server.on("/stop", HTTP_GET, handleStope);
   server.on("/reverse", HTTP_GET, handleReverse);
   server.on("/right", HTTP_GET, handleRight);
+
+    server.on("/PosHold", HTTP_GET, handlePosHold);
+  server.on("/Stab", HTTP_GET, handleStab);
 
   
   // Start the server
@@ -283,7 +298,7 @@ server.handleClient();
 
  PosRef=PosRef+PosSpeed;
 
-linearDist =0.95*linearDist -0.05*constrain(((StepperL.get_cnt()-StepperR.get_cnt())/2-PosRef)*0.001*PosKp+0.001*controlSignal*PosKd,-8,8);
+linearDist =0.95*linearDist -0.05*constrain(Mode*((StepperL.get_cnt()-StepperR.get_cnt())/2-PosRef)*0.001*PosKp+0.001*controlSignal*PosKd,-8,8);
 
  error = (Pitch-offset-linearDist);
 
@@ -354,6 +369,8 @@ void handleRoot() {
         function stopRobot() { fetch('/stop'); }
         function moveRight() { fetch('/right'); }
         function moveReverse() { fetch('/reverse'); }
+        function PosHold() { fetch('/PosHold'); }
+        function Stab() { fetch('/Stab'); }
         
 
         function updateOffset(pos) {
@@ -420,13 +437,10 @@ void handleRoot() {
 
     <!-- PID Tune -->
     <p>
-        <button class="button" onclick="moveLeft()">Kp+</button>
-        <button class="button" onclick="moveRight()">Kp-</button>
+        <button class="button" onclick="PosHold()">PosHold</button>
+        <button class="button" onclick="Stab()">Stab</button>
     </p>
-    <p>
-        <button class="button" onclick="moveLeft()">Kd+</button>
-        <button class="button" onclick="moveRight()">Kd-</button>
-    </p>
+
     
     <div class="chart-container">
         <!-- IMU Data Plots (empty for now) -->
