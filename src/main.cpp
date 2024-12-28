@@ -152,13 +152,13 @@ void handleKd() {
 
 
 void handleForward() {
-PosSpeed+=10;
+PosSpeed-=10;
   server.send(200);
 }
 
 void handleLeft() {
- RotSpeedL += 10;
- RotSpeedR -= 10;
+ RotSpeedL -= 10;
+ RotSpeedR += 10;
   server.send(200);
 }
 
@@ -171,12 +171,12 @@ PosSpeed=0;
 }
 
 void handleReverse() {
-PosSpeed-=10;
+PosSpeed+=10;
   server.send(200);
 }
 void handleRight() {
- RotSpeedL -= 10;
- RotSpeedR += 10;
+ RotSpeedL += 10;
+ RotSpeedR -= 10;
   server.send(200);
 }
 
