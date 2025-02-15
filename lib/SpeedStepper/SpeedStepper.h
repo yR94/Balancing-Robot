@@ -1,5 +1,5 @@
-#ifndef SpeedStepper
-#define SpeedStepper
+#ifndef SpeedStepper_H
+#define SpeedStepper_H
 
 #include <Arduino.h>
 #include <esp_timer.h>

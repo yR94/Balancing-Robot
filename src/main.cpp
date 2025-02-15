@@ -1,38 +1,4 @@
-// I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class
-// 10/7/2011 by Jeff Rowberg <jeff@rowberg.net>
-// Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
-//
-// Changelog:
-//      2013-05-08 - added multiple output formats
-//                 - added seamless Fastwire support
-//      2011-10-07 - initial release
 
-/* ============================================
-I2Cdev device library code is placed under the MIT license
-Copyright (c) 2011 Jeff Rowberg
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KdND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-===============================================
-*/
-
-// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
-// for both classes must be in the include path of your project
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include "SpeedStepper.h"
@@ -72,7 +38,7 @@ float Kp = 380.0; //12
 float LPF = 0.04;
 float offset = 0;
 float Kd = 0.0;
-float PosKd = 16;
+float PosKd = 18;
 float PosKp = 3;
 
 int16_t ax, ay, az;
@@ -298,7 +264,7 @@ server.handleClient();
 
  PosRef=PosRef+PosSpeed;
 
-linearDist =0.95*linearDist -0.05*constrain(Mode*((StepperL.get_cnt()-StepperR.get_cnt())/2-PosRef)*0.001*PosKp+0.001*controlSignal*PosKd,-8,8);
+linearDist =0.95*linearDist -0.05*constrain(Mode*((StepperL.get_cnt()-StepperR.get_cnt())/2-PosRef)*0.001*PosKp+0.001*controlSignal*PosKd,-20,20);
 
  error = (Pitch-offset-linearDist);
 
@@ -341,6 +307,7 @@ Serial.println(error);
     {
     StepperL.setSpeed(0); // Set motor speed to 200 steps per second
     StepperR.setSpeed(0); // Set motor speed to 200 steps per second
+    overclock = 1;
     
     }
 
